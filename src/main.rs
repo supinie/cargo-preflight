@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_derive::{Deserialize, Serialize};
-use std::fs::exists;
+use std::{env, fs::exists, str::Matches};
 use thiserror::Error;
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
@@ -65,7 +65,29 @@ fn cargo_test() -> Result<()> {
     Ok(())
 }
 
+fn init_symlink() -> Result<()> {
+    std::os::unix::fs::symlink("~/.cargo/bin/cargo-preflight", "./.git/hooks/pre-push")?;
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = env::args();
+    let binary_name = args.next().unwrap_or_default();
+
+    // Check if invoked as `cargo preflight`
+    if binary_name.ends_with("cargo") && args.next().as_deref() == Some("preflight") {
+        // Handle as a Cargo subcommand
+        handle_cargo_subcommand(args)
+    } else {
+        // Handle as a standalone binary
+        handle_standalone_command(args)
+    }
+}
+
+fn handle_cargo_subcommand<I: Iterator<Item = String>>(
+    args: I,
+) -> Result<clap::ArgMatches, Box<dyn std::error::Error>> {
+    println!("subcommand");
     let cmd = clap::Command::new("cargo")
         .bin_name("cargo")
         .styles(CLAP_STYLING)
@@ -74,17 +96,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             clap::command!("preflight")
                 .arg(clap::arg!(--"init").value_parser(clap::value_parser!(bool))),
         );
-    let matches = cmd.get_matches();
+    let matches = cmd.get_matches_from(args);
     let matches = match matches.subcommand() {
         Some(("preflight", matches)) => matches,
         _ => unreachable!("clap should ensure we don't get here"),
     };
-    let init = matches.get_one::<bool>("init");
-    if let Some(true) = init {
-        println!("Initialising...");
-    } else {
-        let cfg = check_local_config()?;
-        let _ = preflight_checks(cfg);
-    }
-    Ok(())
+    Ok(matches.to_owned())
 }
+
+fn handle_standalone_command<I: Iterator<Item = String>>(
+    args: I,
+) -> Result<clap::ArgMatches, Box<dyn std::error::Error>> {
+    println!("standalone");
+    let cmd = clap::Command::new("cargo-preflight")
+        .styles(CLAP_STYLING)
+        .arg(clap::arg!(--"init").value_parser(clap::value_parser!(bool)));
+    Ok(cmd.get_matches_from(args))
+}
+
+// fn preflight(matches: Matches<>
+//     let init = matches.get_one::<bool>("init");
+//     if let Some(true) = init {
+//         println!("Initialising...");
+//         init_symlink()?;
+//     } else {
+//         let cfg = check_local_config()?;
+//         preflight_checks(cfg)?;
+//     }
+//     Ok(())
+// }
