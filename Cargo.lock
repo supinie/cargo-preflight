@@ -350,8 +350,10 @@ dependencies = [
 name = "cargo-preflight"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "cargo",
  "clap",
+ "clap-cargo",
  "confy",
  "serde",
  "serde_derive",
@@ -422,6 +424,16 @@ checksum = "2df961d8c8a0d08aa9945718ccf584145eee3f3aa06cddbeac12933781102e04"
 dependencies = [
  "clap_builder",
  "clap_derive",
+]
+
+[[package]]
+name = "clap-cargo"
+version = "0.15.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d546f0e84ff2bfa4da1ce9b54be42285767ba39c688572ca32412a09a73851e5"
+dependencies = [
+ "anstyle",
+ "clap",
 ]
 
 [[package]]
