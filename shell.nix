@@ -1,4 +1,10 @@
-with import <nixpkgs> {};
+with import <nixpkgs> { };
 mkShell {
-    buildInputs = [ rustup gcc bacon ];
+  buildInputs = [
+    rustup
+    gcc
+    bacon
+    pkg-config
+    openssl.dev
+  ];
 }
