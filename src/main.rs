@@ -90,14 +90,14 @@ fn init_symlink(cfg: PreflightConfig) -> Result<()> {
 fn handle_cargo_subcommand<I: Iterator<Item = String>>(
     args: I,
 ) -> Result<clap::ArgMatches, Box<dyn std::error::Error>> {
-    println!("subcommand");
     let cmd = clap::Command::new("cargo")
         .bin_name("cargo")
         .styles(CLAP_STYLING)
         .subcommand_required(true)
         .subcommand(
             clap::command!("preflight")
-                .arg(clap::arg!(--"init").value_parser(clap::value_parser!(bool))),
+                .arg(clap::arg!(--"init").value_parser(clap::value_parser!(bool)))
+                .arg(clap::arg!(<REMOTE>).value_parser(clap::value_parser!(String))),
         );
     let matches = cmd.get_matches_from(args);
     let matches = match matches.subcommand() {
@@ -110,10 +110,10 @@ fn handle_cargo_subcommand<I: Iterator<Item = String>>(
 fn handle_standalone_command<I: Iterator<Item = String>>(
     args: I,
 ) -> Result<clap::ArgMatches, Box<dyn std::error::Error>> {
-    println!("standalone");
     let cmd = clap::Command::new("cargo-preflight")
         .styles(CLAP_STYLING)
-        .arg(clap::arg!(--"init").value_parser(clap::value_parser!(bool)));
+        .arg(clap::arg!(--"init" "Initialse preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
+        .arg(clap::Arg::new("REMOTE").hide(true));
     Ok(cmd.get_matches_from(args))
 }
 
