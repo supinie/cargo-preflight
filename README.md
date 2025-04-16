@@ -47,3 +47,11 @@ checks = [
     "check_benches",
 ] # Default values: ["fmt", "test"]
 ```
+
+# Roadmap
+
+- [ ] Add override if checks fail
+- [ ] Add option to set which branch(es) Preflight will run against
+- [ ] Check for secrets
+- [ ] Check multiple commits for last "stable" commit
+- [ ] Run on `cargo publish`
