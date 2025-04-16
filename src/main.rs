@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_derive::{Deserialize, Serialize};
-use std::{env, fs::exists, str::Matches};
+use std::{env, fs::exists};
 use thiserror::Error;
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
@@ -33,6 +33,15 @@ impl std::default::Default for PreflightConfig {
 pub enum PreflightError {
     #[error("Invalid check in config: {0}")]
     InvalidCheck(String),
+
+    #[error("Invalid hook in config: {0}")]
+    InvalidHook(String),
+}
+
+impl From<PreflightError> for std::io::Error {
+    fn from(err: PreflightError) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::Other, format!("{}", err))
+    }
 }
 
 fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
@@ -65,23 +74,17 @@ fn cargo_test() -> Result<()> {
     Ok(())
 }
 
-fn init_symlink() -> Result<()> {
-    std::os::unix::fs::symlink("~/.cargo/bin/cargo-preflight", "./.git/hooks/pre-push")?;
-    Ok(())
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = env::args();
-    let binary_name = args.next().unwrap_or_default();
-
-    // Check if invoked as `cargo preflight`
-    if binary_name.ends_with("cargo") && args.next().as_deref() == Some("preflight") {
-        // Handle as a Cargo subcommand
-        handle_cargo_subcommand(args)
-    } else {
-        // Handle as a standalone binary
-        handle_standalone_command(args)
+fn init_symlink(cfg: PreflightConfig) -> Result<()> {
+    let mut path = dirs::home_dir().expect("No valid home dir found");
+    path.push(".cargo/bin/cargo-preflight");
+    for hook in cfg.run_when {
+        match hook.as_str() {
+            "commit" => std::os::unix::fs::symlink(&path, "./.git/hooks/pre-commit"),
+            "push" => std::os::unix::fs::symlink(&path, "./.git/hooks/pre-push"),
+            _ => Err(PreflightError::InvalidHook(hook).into()),
+        }?
     }
+    Ok(())
 }
 
 fn handle_cargo_subcommand<I: Iterator<Item = String>>(
@@ -114,14 +117,34 @@ fn handle_standalone_command<I: Iterator<Item = String>>(
     Ok(cmd.get_matches_from(args))
 }
 
-// fn preflight(matches: Matches<>
-//     let init = matches.get_one::<bool>("init");
-//     if let Some(true) = init {
-//         println!("Initialising...");
-//         init_symlink()?;
-//     } else {
-//         let cfg = check_local_config()?;
-//         preflight_checks(cfg)?;
-//     }
-//     Ok(())
-// }
+fn preflight(matches: clap::ArgMatches) -> Result<()> {
+    let init = matches.get_one::<bool>("init");
+    let cfg = check_local_config()?;
+    if let Some(true) = init {
+        println!("Initialising...");
+        init_symlink(cfg)?;
+    } else {
+        preflight_checks(cfg)?;
+    }
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = env::args();
+    let binary_name = args.next().unwrap_or_default();
+
+    // Check if invoked as `cargo preflight`
+    let handle_output =
+        if binary_name.ends_with("cargo") && args.next().as_deref() == Some("preflight") {
+            // Handle as a Cargo subcommand
+            handle_cargo_subcommand(args)
+        } else {
+            // Handle as a standalone binary
+            handle_standalone_command(args)
+        };
+
+    if let Ok(matches) = handle_output {
+        preflight(matches)?;
+    }
+    Ok(())
+}
