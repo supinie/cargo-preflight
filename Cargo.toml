@@ -14,3 +14,4 @@ clap = { version = "4.5.36", features = ["cargo", "derive"] }
 clap-cargo = "0.15.2"
 dirs = "6.0.0"
 colored = "3.0.0"
+inquire = "0.7.5"

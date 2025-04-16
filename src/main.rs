@@ -1,5 +1,6 @@
 use anyhow::Result;
 use colored::Colorize;
+use inquire::{MultiSelect, Select};
 use serde_derive::{Deserialize, Serialize};
 use std::{env, fs::exists, process::Command};
 use thiserror::Error;
@@ -16,16 +17,16 @@ pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling:
 #[derive(Debug, Serialize, Deserialize)]
 struct PreflightConfig {
     run_when: Vec<String>,
-    remote_branches: Vec<String>,
-    preflight_checks: Vec<String>,
+    // remote_branches: Vec<String>,
+    checks: Vec<String>,
 }
 
 impl std::default::Default for PreflightConfig {
     fn default() -> Self {
         Self {
             run_when: vec!["push".into()],
-            remote_branches: vec!["main".into(), "master".into()],
-            preflight_checks: vec!["fmt".into(), "test".into()],
+            // remote_branches: vec!["main".into(), "master".into()],
+            checks: vec!["fmt".into(), "test".into()],
         }
     }
 }
@@ -59,21 +60,21 @@ pub enum PreflightError {
 
 impl From<PreflightError> for std::io::Error {
     fn from(err: PreflightError) -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::Other, format!("{}", err))
+        std::io::Error::other(err)
     }
 }
 
 fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
-    if exists("./.cargo-preflight.toml").expect("Can't check for local config") {
-        confy::load_path("./cargo-preflight.toml")
+    if exists("./.preflight.toml").expect("Can't check for local config") {
+        confy::load_path("./.preflight.toml")
     } else {
-        confy::load("cargo-preflight", None)
+        confy::load("cargo-preflight", "preflight")
     }
 }
 
 fn preflight_checks(cfg: PreflightConfig) -> Result<()> {
     // get current workspace for tests and fmt
-    for check in cfg.preflight_checks {
+    for check in cfg.checks {
         match check.as_str() {
             "fmt" => cargo_fmt(),
             "clippy" => cargo_clippy(),
@@ -109,9 +110,7 @@ fn cargo_clippy() -> Result<()> {
     let output = Command::new("cargo")
         .arg("clippy")
         .arg("--")
-        .arg("--all-targets")
-        .arg("--")
-        .arg("-D warnings")
+        .args(["-D", "warnings"])
         .output()?;
 
     if output.status.success() {
@@ -119,7 +118,7 @@ fn cargo_clippy() -> Result<()> {
         Ok(())
     } else {
         Err(PreflightError::ClippyFailed {
-            clippy_output: String::from_utf8_lossy(&output.stdout).to_string(),
+            clippy_output: String::from_utf8_lossy(&output.stderr).to_string(),
         }
         .into())
     }
@@ -211,8 +210,9 @@ fn handle_cargo_subcommand<I: Iterator<Item = String>>(
         .subcommand_required(true)
         .subcommand(
             clap::command!("preflight")
-                .arg(clap::arg!(--"init").value_parser(clap::value_parser!(bool)))
-                .arg(clap::arg!(<REMOTE>).value_parser(clap::value_parser!(String))),
+                .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
+                .arg(clap::arg!(<REMOTE>).value_parser(clap::value_parser!(String)))
+                .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool))),
         );
     let matches = cmd.get_matches_from(args);
     let matches = match matches.subcommand() {
@@ -228,20 +228,57 @@ fn handle_standalone_command<I: Iterator<Item = String>>(
     let cmd = clap::Command::new("cargo-preflight")
         .styles(CLAP_STYLING)
         .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
-        .arg(clap::Arg::new("REMOTE").hide(true));
+        .arg(clap::Arg::new("REMOTE").hide(true))
+        .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool)));
     Ok(cmd.get_matches_from(args))
 }
 
-fn update_config(matches: clap::ArgMatches) -> Result<()> {
-    todo!();
+fn update_config() -> Result<()> {
+    let config_types = vec!["global", "local"];
+    let checks = vec![
+        "fmt",
+        "clippy",
+        "test",
+        "check_tests",
+        "check_examples",
+        "check_benches",
+    ];
+    let run_when = vec!["commit", "push"];
+
+    let config_type = Select::new(
+        "Do you want to make a global or local config?",
+        config_types,
+    )
+    .prompt()?;
+
+    let chosen_checks = MultiSelect::new("Select checks to run:", checks).prompt()?;
+
+    let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when).prompt()?;
+
+    let cfg = PreflightConfig {
+        run_when: chosen_run_when.into_iter().map(|s| s.to_owned()).collect(),
+        checks: chosen_checks.into_iter().map(|s| s.to_owned()).collect(),
+    };
+
+    if config_type == "local" {
+        let path = std::path::Path::new("./.preflight.toml");
+        confy::store_path(path, cfg)?;
+    } else {
+        confy::store("cargo-preflight", "preflight", cfg)?;
+    }
+
+    Ok(())
 }
 
 fn preflight(matches: clap::ArgMatches) -> Result<()> {
-    let init = matches.get_one::<bool>("init");
     let cfg = check_local_config()?;
+    let init = matches.get_one::<bool>("init");
+    let configure = matches.get_one::<bool>("config");
     if let Some(true) = init {
-        println!("{}", "Initialising...");
+        println!("Initialising...");
         init_symlink(cfg)?;
+    } else if let Some(true) = configure {
+        update_config()?;
     } else {
         println!("{}", "Running Preflight Checks...".bold());
         preflight_checks(cfg)?;
