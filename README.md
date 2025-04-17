@@ -2,7 +2,7 @@
 
 Preflight is a custom Cargo subcommand to run local "CI" on certain Git actions.
 
-Preflight's aim is to ensure that trivially broken commits don't reach your remote, wasting CI time, adding extra fix commits, and worst of all saving you the embarrasment.
+Preflight's aim is to ensure that trivially broken commits don't reach your remote, wasting CI time, adding extra fix commits, and most importantly saving you the embarrasment.
 
 Preflight runs as a git hook to automatically run checks on commit or push.
 

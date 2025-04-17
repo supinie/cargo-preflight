@@ -23,7 +23,7 @@
 //!
 //! Preflight is a custom Cargo subcommand to run local "CI" on certain Git actions.
 //!
-//! Preflight's aim is to ensure that trivially broken commits don't reach your remote, wasting CI time, adding extra fix commits, and worst of all saving you the embarrasment.
+//! Preflight's aim is to ensure that trivially broken commits don't reach your remote, wasting CI time, adding extra fix commits, and most importantly saving you the embarrasment.
 //!
 //! Preflight runs as a git hook to automatically run checks on commit or push.
 //!
@@ -76,7 +76,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::{env, fs::exists, process::Command};
 use thiserror::Error;
 
-pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
+const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
     .header(clap_cargo::style::HEADER)
     .usage(clap_cargo::style::USAGE)
     .literal(clap_cargo::style::LITERAL)
@@ -104,35 +104,35 @@ impl Default for PreflightConfig {
 
 #[derive(Error, Debug)]
 pub enum PreflightError {
-    // Invalid entry in `checks` in Preflight config
+    /// Invalid entry in `checks` in Preflight config, see [valid options](index.html#possible-options)
     #[error("{}{config}", "Invalid check in config: ".red())]
     InvalidCheck { config: String },
 
-    // Invalid entry in `run_when` in Preflight config
+    /// Invalid entry in `run_when` in Preflight config, see [valid options](index.html#possible-options)
     #[error("{}{config}", "Invalid hook in config: ".red())]
     InvalidHook { config: String },
 
-    // `cargo fmt --check` preflight check failed
+    /// `cargo fmt --check` preflight check failed
     #[error("\n    {}{fmt_output}", "[x] Formatting preflight check failed".red().bold())]
     FormatFailed { fmt_output: String },
 
-    // `cargo clippy -- -D warnings` preflight check failed
+    /// `cargo clippy -- -D warnings` preflight check failed
     #[error("\n    {}{clippy_output}", "[x] Clippy preflight check failed:\n".red().bold())]
     ClippyFailed { clippy_output: String },
 
-    // `cargo check --tests` preflight check failed
+    /// `cargo check --tests` preflight check failed
     #[error("\n    {}{check_outputs}", "[x] Check test preflight check failed:\n".red().bold())]
     CheckTestsFailed { check_outputs: String },
 
-    // `cargo check --examples` preflight check failed
+    /// `cargo check --examples` preflight check failed
     #[error("\n    {}{check_outputs}", "[x] Check examples preflight check failed:\n".red().bold())]
     CheckExamplesFailed { check_outputs: String },
 
-    // `cargo check --benches` preflight check failed
+    /// `cargo check --benches` preflight check failed
     #[error("\n    {}{check_outputs}", "[x] Check benches preflight check failed:\n".red().bold())]
     CheckBenchesFailed { check_outputs: String },
 
-    // `cargo test` preflight check failed
+    /// `cargo test` preflight check failed
     #[error("\n    {}{test_outputs}", "[x] Test preflight check failed:\n".red().bold())]
     TestsFailed { test_outputs: String },
 }
