@@ -1,3 +1,24 @@
+#![forbid(unsafe_code)]
+#![warn(
+    clippy::cast_lossless,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::checked_conversions,
+    clippy::implicit_saturating_sub,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    clippy::unwrap_used,
+    clippy::pedantic,
+    clippy::nursery,
+    rust_2018_idioms,
+    unused_lifetimes,
+    unused_qualifications
+)]
+#![allow(clippy::too_long_first_doc_paragraph)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 use anyhow::Result;
 use colored::Colorize;
 use inquire::{MultiSelect, Select};
@@ -21,7 +42,7 @@ struct PreflightConfig {
     checks: Vec<String>,
 }
 
-impl std::default::Default for PreflightConfig {
+impl Default for PreflightConfig {
     fn default() -> Self {
         Self {
             run_when: vec!["push".into()],
@@ -59,8 +80,8 @@ pub enum PreflightError {
 }
 
 impl From<PreflightError> for std::io::Error {
-    fn from(err: PreflightError) -> std::io::Error {
-        std::io::Error::other(err)
+    fn from(err: PreflightError) -> Self {
+        Self::other(err)
     }
 }
 
@@ -83,7 +104,7 @@ fn preflight_checks(cfg: PreflightConfig) -> Result<()> {
             "check_benches" => cargo_check_benches(),
             "test" => cargo_test(),
             _ => Err(PreflightError::InvalidCheck { config: check }.into()),
-        }?
+        }?;
     }
     Ok(())
 }
@@ -196,14 +217,13 @@ fn init_symlink(cfg: PreflightConfig) -> Result<()> {
             "commit" => std::os::unix::fs::symlink(&path, "./.git/hooks/pre-commit"),
             "push" => std::os::unix::fs::symlink(&path, "./.git/hooks/pre-push"),
             _ => Err(PreflightError::InvalidHook { config: hook }.into()),
-        }?
+        }?;
     }
     Ok(())
 }
 
-fn handle_cargo_subcommand<I: Iterator<Item = String>>(
-    args: I,
-) -> Result<clap::ArgMatches, Box<dyn std::error::Error>> {
+#[allow(clippy::cognitive_complexity)]
+fn cargo_subcommand<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
     let cmd = clap::Command::new("cargo")
         .bin_name("cargo")
         .styles(CLAP_STYLING)
@@ -214,23 +234,19 @@ fn handle_cargo_subcommand<I: Iterator<Item = String>>(
                 .arg(clap::arg!(<REMOTE>).value_parser(clap::value_parser!(String)))
                 .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool))),
         );
-    let matches = cmd.get_matches_from(args);
-    let matches = match matches.subcommand() {
-        Some(("preflight", matches)) => matches,
+    match cmd.get_matches_from(args).subcommand() {
+        Some(("preflight", matches)) => matches.clone(),
         _ => unreachable!("clap should ensure we don't get here"),
-    };
-    Ok(matches.to_owned())
+    }
 }
 
-fn handle_standalone_command<I: Iterator<Item = String>>(
-    args: I,
-) -> Result<clap::ArgMatches, Box<dyn std::error::Error>> {
+fn standalone_command<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
     let cmd = clap::Command::new("cargo-preflight")
         .styles(CLAP_STYLING)
         .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
         .arg(clap::Arg::new("REMOTE").hide(true))
         .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool)));
-    Ok(cmd.get_matches_from(args))
+    cmd.get_matches_from(args)
 }
 
 fn update_config() -> Result<()> {
@@ -256,8 +272,8 @@ fn update_config() -> Result<()> {
     let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when).prompt()?;
 
     let cfg = PreflightConfig {
-        run_when: chosen_run_when.into_iter().map(|s| s.to_owned()).collect(),
-        checks: chosen_checks.into_iter().map(|s| s.to_owned()).collect(),
+        run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
+        checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
     };
 
     if config_type == "local" {
@@ -270,14 +286,14 @@ fn update_config() -> Result<()> {
     Ok(())
 }
 
-fn preflight(matches: clap::ArgMatches) -> Result<()> {
+fn preflight(matches: &clap::ArgMatches) -> Result<()> {
     let cfg = check_local_config()?;
     let init = matches.get_one::<bool>("init");
     let configure = matches.get_one::<bool>("config");
-    if let Some(true) = init {
+    if init == Some(&true) {
         println!("Initialising...");
         init_symlink(cfg)?;
-    } else if let Some(true) = configure {
+    } else if configure == Some(&true) {
         update_config()?;
     } else {
         println!("{}", "Running Preflight Checks...".bold());
@@ -290,18 +306,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args();
     let binary_name = args.next().unwrap_or_default();
 
-    // Check if invoked as `cargo preflight`
-    let handle_output =
-        if binary_name.ends_with("cargo") && args.next().as_deref() == Some("preflight") {
-            // Handle as a Cargo subcommand
-            handle_cargo_subcommand(args)
-        } else {
-            // Handle as a standalone binary
-            handle_standalone_command(args)
-        };
+    let matches = if binary_name.ends_with("cargo") && args.next().as_deref() == Some("preflight") {
+        cargo_subcommand(args)
+    } else {
+        standalone_command(args)
+    };
 
-    if let Ok(matches) = handle_output {
-        preflight(matches)?;
-    }
+    preflight(&matches)?;
     Ok(())
 }
