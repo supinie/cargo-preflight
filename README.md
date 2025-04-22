@@ -9,7 +9,7 @@ Preflight runs as a git hook to automatically run checks on commit or push.
 # Installing Preflight
 
 ```
-cargo add cargo-preflight
+cargo install cargo-preflight
 ```
 
 # Using Preflight
