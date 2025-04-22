@@ -2,7 +2,7 @@
   <img src="./preflight_ferris.png" alt="Preflight ferris" width="250" height="250"/>
 </p>
 
-# Preflight
+# Preflight 🛫
 
 Preflight is a custom Cargo subcommand to run local "CI" on certain Git actions.
 
@@ -23,6 +23,8 @@ Preflight can be enabled in a repository by running:
 ```
 cargo preflight --init
 ```
+
+Preflight can also be run as a one-off test with the `cargo preflight` command.
 
 _Note: Currently, Preflight only supports Linux systems._
 
@@ -53,6 +55,7 @@ checks = [
     "check_tests",
     "check_examples",
     "check_benches",
+    "unused_deps", # uses `cargo-shear`
 ] # Default values: ["fmt", "test"]
 ```
 

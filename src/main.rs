@@ -39,6 +39,8 @@
 //! cargo preflight --init
 //! ```
 //!
+//! Preflight can also be run as a one-off test with the `cargo preflight` command.
+//!
 //! _Note: Currently, Preflight only supports Linux systems._
 //!
 //! # Configuring Preflight
@@ -68,14 +70,21 @@
 //!     "check_tests",
 //!     "check_examples",
 //!     "check_benches",
+//!     "unused_deps", # uses `cargo-shear`
 //! ] # Default values: ["fmt", "test"]
 //! ```
 
 use anyhow::Result;
+use cargo_shear::{CargoShear, cargo_shear_options};
 use colored::Colorize;
 use inquire::{MultiSelect, Select};
-use serde_derive::{Deserialize, Serialize};
-use std::{env, fs::exists, process::Command};
+use serde::{Deserialize, Serialize};
+use std::{
+    env,
+    fs::exists,
+    io::Read,
+    process::{Command, ExitCode},
+};
 use thiserror::Error;
 
 const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
@@ -137,6 +146,10 @@ pub enum PreflightError {
     /// `cargo test` preflight check failed
     #[error("\n    {}{test_outputs}", "[x] Test preflight check failed:\n".red().bold())]
     TestsFailed { test_outputs: String },
+
+    /// `cargo shear` preflight check failed
+    #[error("\n    {}{shear_output}", "[x] Unused dependencies preflight check failed:\n".red().bold())]
+    ShearFailed { shear_output: String },
 }
 
 impl From<PreflightError> for std::io::Error {
@@ -163,6 +176,7 @@ fn preflight_checks(cfg: PreflightConfig) -> Result<()> {
             "check_examples" => cargo_check_examples(),
             "check_benches" => cargo_check_benches(),
             "test" => cargo_test(),
+            "unused_deps" => shear(),
             _ => Err(PreflightError::InvalidCheck { config: check }.into()),
         }?;
     }
@@ -180,6 +194,7 @@ fn cargo_fmt() -> Result<()> {
         println!("    {}", "[√] Formatting preflight check passed".green());
         Ok(())
     } else {
+        println!("{}", String::from_utf8_lossy(&output.stderr));
         Err(PreflightError::FormatFailed {
             fmt_output: String::from_utf8_lossy(&output.stdout).to_string(),
         }
@@ -269,6 +284,37 @@ fn cargo_test() -> Result<()> {
     }
 }
 
+#[allow(clippy::unnecessary_wraps)]
+#[allow(clippy::uninlined_format_args)]
+fn shear() -> Result<()> {
+    let options = cargo_shear_options()
+        .run_inner([env::current_dir()?.as_os_str()].as_slice())
+        .map_err(|_| anyhow::anyhow!("Parse failure"))?;
+    let mut buf = gag::BufferRedirect::stdout()?;
+    let exit_code = CargoShear::new(options).run();
+    let mut output = String::new();
+    buf.read_to_string(&mut output)?;
+    drop(buf);
+
+    match exit_code {
+        code if code == ExitCode::from(0) => {
+            println!(
+                "{}",
+                "    [√] Unused dependencies preflight check passed".green()
+            );
+            Ok(())
+        }
+        code if code == ExitCode::from(1) => Err(PreflightError::ShearFailed {
+            shear_output: output,
+        }
+        .into()),
+        _ => Err(PreflightError::ShearFailed {
+            shear_output: "Processing error during shear...".to_owned(),
+        }
+        .into()),
+    }
+}
+
 fn init_symlink(cfg: PreflightConfig) -> Result<()> {
     let mut path = dirs::home_dir().expect("No valid home dir found");
     path.push(".cargo/bin/cargo-preflight");
@@ -318,6 +364,7 @@ fn update_config() -> Result<()> {
         "check_tests",
         "check_examples",
         "check_benches",
+        "unused_deps",
     ];
     let run_when = vec!["commit", "push"];
 
@@ -356,7 +403,7 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
     } else if configure == Some(&true) {
         update_config()?;
     } else {
-        println!("{}", "Running Preflight Checks...".bold());
+        println!("{}", "🛫 Running Preflight Checks...".bold());
         preflight_checks(cfg)?;
     }
     Ok(())
