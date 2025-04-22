@@ -29,7 +29,7 @@
 //!
 //! # Installing Preflight
 //!
-//! _coming soon: `cargo add cargo-preflight`_
+//! `cargo install cargo-preflight`
 //!
 //! # Using Preflight
 //!
@@ -38,6 +38,8 @@
 //! ```sh
 //! cargo preflight --init
 //! ```
+//!
+//! _Note: Currently, Preflight only supports Linux systems._
 //!
 //! # Configuring Preflight
 //!

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./preflight_ferris.png" alt="Preflight ferris" width="250" height="250"/>
+</p>
+
 # Preflight
 
 Preflight is a custom Cargo subcommand to run local "CI" on certain Git actions.
