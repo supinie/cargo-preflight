@@ -16,7 +16,6 @@
     unused_lifetimes,
     unused_qualifications
 )]
-#![allow(clippy::too_long_first_doc_paragraph)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 //! # About
@@ -284,8 +283,6 @@ fn cargo_test() -> Result<()> {
     }
 }
 
-#[allow(clippy::unnecessary_wraps)]
-#[allow(clippy::uninlined_format_args)]
 fn shear() -> Result<()> {
     let options = cargo_shear_options()
         .run_inner([env::current_dir()?.as_os_str()].as_slice())
