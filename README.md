@@ -61,8 +61,15 @@ checks = [
 
 # Roadmap
 
-- [ ] Add override if checks fail
-- [ ] Add option to set which branch(es) Preflight will run against
+- [ ] Override if checks fail
+- [ ] Auto-fix failed checks (when applicable, ie. clippy, fmt)
+- [ ] Set which branch(es) Preflight will run against
+- [ ] Different checks for different hooks
 - [ ] Check for secrets
+- [ ] Check semver for libs
 - [ ] Check multiple commits for last "stable" commit
 - [ ] Run on `cargo publish`
+- [ ] Automatically remove unused hooks
+- [ ] Properly overwrite old hooks
+
+These are in no particular order, and many will introduce breaking changes.
