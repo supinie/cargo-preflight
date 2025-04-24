@@ -76,7 +76,7 @@
 use anyhow::Result;
 use cargo_shear::{CargoShear, cargo_shear_options};
 use colored::Colorize;
-use inquire::{MultiSelect, Select};
+use inquire::{Confirm, MultiSelect, Select};
 use serde::{Deserialize, Serialize};
 use std::{
     env,
@@ -100,6 +100,8 @@ struct PreflightConfig {
     run_when: Vec<String>,
     // remote_branches: Vec<String>,
     checks: Vec<String>,
+    autofix: bool,
+    over_ride: bool,
 }
 
 impl Default for PreflightConfig {
@@ -108,6 +110,8 @@ impl Default for PreflightConfig {
             run_when: vec!["push".into()],
             // remote_branches: vec!["main".into(), "master".into()],
             checks: vec!["fmt".into(), "test".into()],
+            autofix: true,
+            over_ride: false,
         }
     }
 }
@@ -123,31 +127,31 @@ pub enum PreflightError {
     InvalidHook { config: String },
 
     /// `cargo fmt --check` preflight check failed
-    #[error("\n    {}{fmt_output}", "[x] Formatting preflight check failed".red().bold())]
+    #[error("    {}{fmt_output}", "[x] Formatting preflight check failed".red().bold())]
     FormatFailed { fmt_output: String },
 
     /// `cargo clippy -- -D warnings` preflight check failed
-    #[error("\n    {}{clippy_output}", "[x] Clippy preflight check failed:\n".red().bold())]
+    #[error("    {}{clippy_output}", "[x] Clippy preflight check failed:\n".red().bold())]
     ClippyFailed { clippy_output: String },
 
     /// `cargo check --tests` preflight check failed
-    #[error("\n    {}{check_outputs}", "[x] Check test preflight check failed:\n".red().bold())]
+    #[error("    {}{check_outputs}", "[x] Check test preflight check failed:\n".red().bold())]
     CheckTestsFailed { check_outputs: String },
 
     /// `cargo check --examples` preflight check failed
-    #[error("\n    {}{check_outputs}", "[x] Check examples preflight check failed:\n".red().bold())]
+    #[error("    {}{check_outputs}", "[x] Check examples preflight check failed:\n".red().bold())]
     CheckExamplesFailed { check_outputs: String },
 
     /// `cargo check --benches` preflight check failed
-    #[error("\n    {}{check_outputs}", "[x] Check benches preflight check failed:\n".red().bold())]
+    #[error("    {}{check_outputs}", "[x] Check benches preflight check failed:\n".red().bold())]
     CheckBenchesFailed { check_outputs: String },
 
     /// `cargo test` preflight check failed
-    #[error("\n    {}{test_outputs}", "[x] Test preflight check failed:\n".red().bold())]
+    #[error("    {}{test_outputs}", "[x] Test preflight check failed:\n".red().bold())]
     TestsFailed { test_outputs: String },
 
     /// `cargo shear` preflight check failed
-    #[error("\n    {}{shear_output}", "[x] Unused dependencies preflight check failed:\n".red().bold())]
+    #[error("    {}{shear_output}", "[x] Unused dependencies preflight check failed:\n".red().bold())]
     ShearFailed { shear_output: String },
 }
 
@@ -358,10 +362,10 @@ fn update_config() -> Result<()> {
         "fmt",
         "clippy",
         "test",
+        "unused_deps",
         "check_tests",
         "check_examples",
         "check_benches",
-        "unused_deps",
     ];
     let run_when = vec!["commit", "push"];
 
@@ -369,15 +373,32 @@ fn update_config() -> Result<()> {
         "Do you want to make a global or local config?",
         config_types,
     )
+    .with_vim_mode(true)
     .prompt()?;
 
-    let chosen_checks = MultiSelect::new("Select checks to run:", checks).prompt()?;
+    let chosen_checks = MultiSelect::new("Select checks to run:", checks)
+        .with_vim_mode(true)
+        .prompt()?;
 
-    let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when).prompt()?;
+    let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when)
+        .with_vim_mode(true)
+        .prompt()?;
+
+    let over_ride = Confirm::new("Enable override functionality?")
+        .with_help_message("This will allow you to override Preflight on failed checks")
+        .prompt()?;
+
+    let autofix = Confirm::new("Enable autofix functionality?")
+        .with_help_message(
+            "Where possible, this will enable you to automatically apply suggestions",
+        )
+        .prompt()?;
 
     let cfg = PreflightConfig {
         run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
         checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
+        autofix,
+        over_ride,
     };
 
     if config_type == "local" {
@@ -401,7 +422,10 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
         update_config()?;
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
-        preflight_checks(cfg)?;
+        let preflight_report = preflight_checks(cfg);
+        if let Err(preflight_error) = preflight_report {
+            println!("{preflight_error:?}");
+        }
     }
     Ok(())
 }
