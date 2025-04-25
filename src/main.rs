@@ -169,9 +169,8 @@ fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
     }
 }
 
-fn preflight_checks(cfg: PreflightConfig) -> Result<()> {
-    // get current workspace for tests and fmt
-    for check in cfg.checks {
+fn preflight_checks(checks: Vec<String>) -> Result<()> {
+    for check in checks {
         match check.as_str() {
             "fmt" => cargo_fmt(),
             "clippy" => cargo_clippy(),
@@ -411,6 +410,24 @@ fn update_config() -> Result<()> {
     Ok(())
 }
 
+fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize> {
+    // Map each error variant to the corresponding check name
+    let failed_check = match error {
+        PreflightError::FormatFailed { .. } => "fmt",
+        PreflightError::ClippyFailed { .. } => "clippy",
+        PreflightError::CheckTestsFailed { .. } => "check_tests",
+        PreflightError::CheckExamplesFailed { .. } => "check_examples",
+        PreflightError::CheckBenchesFailed { .. } => "check_benches",
+        PreflightError::TestsFailed { .. } => "test",
+        PreflightError::ShearFailed { .. } => "unused_deps",
+        PreflightError::InvalidCheck { config } => config.as_str(),
+        _ => return None, // Handle unexpected or unsupported error types
+    };
+
+    // Find the index of the failed check in the checks vector
+    checks.iter().position(|check| check == failed_check)
+}
+
 fn preflight(matches: &clap::ArgMatches) -> Result<()> {
     let cfg = check_local_config()?;
     let init = matches.get_one::<bool>("init");
@@ -422,7 +439,7 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
         update_config()?;
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
-        let preflight_report = preflight_checks(cfg);
+        let preflight_report = preflight_checks(cfg.checks);
         if let Err(preflight_error) = preflight_report {
             println!("{preflight_error:?}");
         }
