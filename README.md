@@ -46,7 +46,7 @@ checks = [
     "unused_deps", # uses `cargo-shear`
 ] # Default values: ["fmt", "test"]
 
-autofix = false # Enables autofix functionality
+autofix = false # Enables autofix functionality (for fmt and clippy)
 
 over_ride = false # Enables override functionality
 ```
