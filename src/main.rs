@@ -413,7 +413,6 @@ fn update_config() -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
 fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize> {
     // Map each error variant to the corresponding check name
     let failed_check = match error {
