@@ -450,6 +450,8 @@ fn over_ride(cfg: PreflightConfig, index: usize) {
     }
 }
 
+fn autofix(cfg: PreflightConfig, index: usize) {}
+
 fn preflight_checks(cfg: PreflightConfig, start: usize) {
     let stopped_at = match run_checks(&cfg.checks[start..]) {
         Ok(()) => None,
