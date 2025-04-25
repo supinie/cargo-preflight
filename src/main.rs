@@ -421,7 +421,7 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
         PreflightError::TestsFailed { .. } => "test",
         PreflightError::ShearFailed { .. } => "unused_deps",
         PreflightError::InvalidCheck { config } => config.as_str(),
-        _ => return None, // Handle unexpected or unsupported error types
+        PreflightError::InvalidHook { .. } => "hook",
     };
 
     // Find the index of the failed check in the checks vector
