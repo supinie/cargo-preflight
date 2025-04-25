@@ -432,10 +432,16 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
 }
 
 fn over_ride(cfg: PreflightConfig, index: usize) {
-    let ans = Confirm::new("Do you want to override {&cfg.checks[index]} preflight check?")
-        .with_default(false)
-        .with_help_message("This will skip {&cfg.checks[index]} and continue preflight checks")
-        .prompt();
+    let ans = Confirm::new(&format!(
+        "Do you want to override {} preflight check?",
+        &cfg.checks[index]
+    ))
+    .with_default(false)
+    .with_help_message(&format!(
+        "This will skip {} and continue preflight checks",
+        &cfg.checks[index]
+    ))
+    .prompt();
 
     match ans {
         Ok(false) => (),
