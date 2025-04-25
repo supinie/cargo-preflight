@@ -194,9 +194,7 @@ fn run_checks(checks: &[String]) -> Result<()> {
 
 fn cargo_fmt() -> Result<()> {
     let output = Command::new("cargo")
-        .arg("fmt")
-        .arg("--")
-        .arg("--check") // This ensures no changes are made, only checks the formatting
+        .args(["fmt", "--", "--check"])
         .output()?;
 
     if output.status.success() {
@@ -213,9 +211,7 @@ fn cargo_fmt() -> Result<()> {
 
 fn cargo_clippy() -> Result<()> {
     let output = Command::new("cargo")
-        .arg("clippy")
-        .arg("--")
-        .args(["-D", "warnings"])
+        .args(["clippy", "--", "-D", "warnings"])
         .output()?;
 
     if output.status.success() {
@@ -230,7 +226,7 @@ fn cargo_clippy() -> Result<()> {
 }
 
 fn cargo_check_tests() -> Result<()> {
-    let output = Command::new("cargo").arg("check").arg("--tests").output()?;
+    let output = Command::new("cargo").args(["check", "--tests"]).output()?;
 
     if output.status.success() {
         println!("{}", "    [√] Check tests preflight check passed".green());
@@ -245,8 +241,7 @@ fn cargo_check_tests() -> Result<()> {
 
 fn cargo_check_examples() -> Result<()> {
     let output = Command::new("cargo")
-        .arg("check")
-        .arg("--examples")
+        .args(["check", "--examples"])
         .output()?;
 
     if output.status.success() {
@@ -264,8 +259,7 @@ fn cargo_check_examples() -> Result<()> {
 }
 fn cargo_check_benches() -> Result<()> {
     let output = Command::new("cargo")
-        .arg("check")
-        .arg("--benches")
+        .args(["check", "--benches"])
         .output()?;
 
     if output.status.success() {
