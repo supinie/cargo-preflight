@@ -30,18 +30,6 @@
 //!
 //! `cargo install cargo-preflight`
 //!
-//! # Using Preflight
-//!
-//! Preflight can be enabled in a repository by running:
-//!
-//! ```sh
-//! cargo preflight --init
-//! ```
-//!
-//! Preflight can also be run as a one-off test with the `cargo preflight` command.
-//!
-//! _Note: Currently, Preflight only supports Linux systems._
-//!
 //! # Configuring Preflight
 //!
 //! Preflight can be configured by running:
@@ -63,15 +51,27 @@
 //! ] # Default values: ["push"]
 //!
 //! checks = [
-//!     "fmt",
-//!     "clippy",
-//!     "test",
-//!     "check_tests",
-//!     "check_examples",
-//!     "check_benches",
+//!     "fmt", # `cargo fmt -- --check`
+//!     "clippy", # `cargo clippy -- -D warnings`
+//!     "test", # `cargo test`
+//!     "check_tests", # `cargo check --tests`
+//!     "check_examples",  # `cargo check --examples`
+//!     "check_benches", # `cargo check --benches`
 //!     "unused_deps", # uses `cargo-shear`
 //! ] # Default values: ["fmt", "test"]
 //! ```
+//! # Using Preflight
+//!
+//! Preflight can be enabled in a repository by running:
+//!
+//! ```sh
+//! cargo preflight --init
+//! ```
+//!
+//! Preflight can also be run as a one-off test with the `cargo preflight` command.
+//!
+//! _Note: Currently, Preflight only supports Linux systems._
+//!
 
 use anyhow::Result;
 use cargo_shear::{CargoShear, cargo_shear_options};

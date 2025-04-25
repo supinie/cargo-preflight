@@ -37,12 +37,12 @@ run_when = [
 ] # Default values: ["push"]
 
 checks = [
-    "fmt",
-    "clippy",
-    "test",
-    "check_tests",
-    "check_examples",
-    "check_benches",
+    "fmt", # `cargo fmt -- --check`
+    "clippy", # `cargo clippy -- -D warnings`
+    "test", # `cargo test`
+    "check_tests", # `cargo check --tests`
+    "check_examples",  # `cargo check --examples`
+    "check_benches", # `cargo check --benches`
     "unused_deps", # uses `cargo-shear`
 ] # Default values: ["fmt", "test"]
 ```
