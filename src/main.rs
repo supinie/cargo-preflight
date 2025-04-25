@@ -431,7 +431,7 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
     checks.iter().position(|check| check == failed_check)
 }
 
-fn over_ride(cfg: PreflightConfig, index: usize) {
+fn over_ride(cfg: &PreflightConfig, index: usize) -> Result<()> {
     let ans = Confirm::new(&format!(
         "Do you want to override {} preflight check?",
         &cfg.checks[index]
@@ -441,32 +441,110 @@ fn over_ride(cfg: PreflightConfig, index: usize) {
         "This will skip {} and continue preflight checks",
         &cfg.checks[index]
     ))
-    .prompt();
+    .prompt()?;
 
-    match ans {
-        Ok(false) => (),
-        Ok(true) => preflight_checks(cfg, index + 1),
-        Err(_) => println!("Error overriding preflight"),
+    if ans {
+        println!("Skipping {}...", &cfg.checks[index]);
+        preflight_checks(cfg, index + 1)?;
+    }
+
+    Ok(())
+}
+
+fn fix_cargo_fmt() -> Result<()> {
+    let output = Command::new("cargo").arg("fmt").output()?;
+
+    if output.status.success() {
+        println!("    {}", "[√] Applying fmt successful".yellow());
+        Ok(())
+    } else {
+        println!("{}", String::from_utf8_lossy(&output.stderr));
+        Err(PreflightError::FormatFailed {
+            fmt_output: String::from_utf8_lossy(&output.stdout).to_string(),
+        }
+        .into())
     }
 }
 
-fn autofix(cfg: PreflightConfig, index: usize) {}
+fn fix_cargo_clippy() -> Result<()> {
+    let output = Command::new("cargo")
+        .env("__CARGO_FIX_YOLO", "1")
+        .args(["clippy", "--fix", "--allow-dirty"])
+        .output()?;
 
-fn preflight_checks(cfg: PreflightConfig, start: usize) {
+    if output.status.success() {
+        println!(
+            "    {}",
+            "[√] Applying clippy suggestions successful".yellow()
+        );
+        Ok(())
+    } else {
+        Err(PreflightError::ClippyFailed {
+            clippy_output: String::from_utf8_lossy(&output.stderr).to_string(),
+        }
+        .into())
+    }
+}
+
+fn autofix(check: &str) -> Result<()> {
+    match check {
+        "fmt" => fix_cargo_fmt(),
+        "clippy" => fix_cargo_clippy(),
+        _ => Err(PreflightError::InvalidCheck {
+            config: check.to_owned(),
+        }
+        .into()),
+    }?;
+    Ok(())
+}
+
+fn autofix_prompt(cfg: &PreflightConfig, index: usize) -> Result<()> {
+    let ans = Confirm::new(&format!(
+        "Do you want to automatically apply {} suggestions?",
+        &cfg.checks[index]
+    ))
+    .with_default(false)
+    .with_help_message(
+        "WARNING: This will apply changes to your dirty workspace, and may be potentially destructive.\nNo will end and fail preflight checks, yes will apply suggestions and continue",
+    )
+    .prompt();
+
+    match ans {
+        Ok(false) => {
+            if cfg.over_ride {
+                over_ride(cfg, index)
+            } else {
+                Ok(())
+            }
+        }
+        Ok(true) => {
+            autofix(&cfg.checks[index])?;
+            preflight_checks(cfg, index)
+        }
+        Err(_) => {
+            println!("Error autofixing preflight");
+            Ok(())
+        }
+    }
+}
+
+fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
     let stopped_at = match run_checks(&cfg.checks[start..]) {
         Ok(()) => None,
         Err(e) => {
             println!("{e:?}");
-            match e.downcast_ref() {
-                Some(preflight_err) => failed_check_index(&cfg.checks, preflight_err),
-                None => None,
-            }
+            e.downcast_ref()
+                .and_then(|preflight_err| failed_check_index(&cfg.checks, preflight_err))
         }
     };
 
-    if let (true, Some(index)) = (cfg.over_ride, stopped_at) {
-        over_ride(cfg, index);
+    if let (true, Some(index)) = (cfg.autofix, stopped_at) {
+        autofix_prompt(cfg, index)?;
+    } else if let (true, Some(index)) = (cfg.over_ride, stopped_at) {
+        over_ride(cfg, index)?;
     }
+
+    Ok(())
 }
 
 fn preflight(matches: &clap::ArgMatches) -> Result<()> {
@@ -480,7 +558,7 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
         update_config()?;
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
-        preflight_checks(cfg, 0);
+        preflight_checks(&cfg, 0)?;
     }
     Ok(())
 }
