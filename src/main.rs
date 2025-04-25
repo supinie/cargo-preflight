@@ -169,7 +169,7 @@ fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
     }
 }
 
-fn preflight_checks(checks: Vec<String>) -> Result<()> {
+fn run_checks(checks: &[String]) -> Result<()> {
     for check in checks {
         match check.as_str() {
             "fmt" => cargo_fmt(),
@@ -179,7 +179,10 @@ fn preflight_checks(checks: Vec<String>) -> Result<()> {
             "check_benches" => cargo_check_benches(),
             "test" => cargo_test(),
             "unused_deps" => shear(),
-            _ => Err(PreflightError::InvalidCheck { config: check }.into()),
+            _ => Err(PreflightError::InvalidCheck {
+                config: check.to_owned(),
+            }
+            .into()),
         }?;
     }
     Ok(())
@@ -384,10 +387,12 @@ fn update_config() -> Result<()> {
         .prompt()?;
 
     let over_ride = Confirm::new("Enable override functionality?")
+        .with_default(false)
         .with_help_message("This will allow you to override Preflight on failed checks")
         .prompt()?;
 
     let autofix = Confirm::new("Enable autofix functionality?")
+        .with_default(false)
         .with_help_message(
             "Where possible, this will enable you to automatically apply suggestions",
         )
@@ -410,7 +415,6 @@ fn update_config() -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
 fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize> {
     // Map each error variant to the corresponding check name
     let failed_check = match error {
@@ -429,6 +433,36 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
     checks.iter().position(|check| check == failed_check)
 }
 
+fn over_ride(cfg: PreflightConfig, index: usize) {
+    let ans = Confirm::new("Do you want to override {&cfg.checks[index]} preflight check?")
+        .with_default(false)
+        .with_help_message("This will skip {&cfg.checks[index]} and continue preflight checks")
+        .prompt();
+
+    match ans {
+        Ok(false) => (),
+        Ok(true) => preflight_checks(cfg, index + 1),
+        Err(_) => println!("Error overriding preflight"),
+    }
+}
+
+fn preflight_checks(cfg: PreflightConfig, start: usize) {
+    let stopped_at = match run_checks(&cfg.checks[start..]) {
+        Ok(()) => None,
+        Err(e) => {
+            println!("{e:?}");
+            match e.downcast_ref() {
+                Some(preflight_err) => failed_check_index(&cfg.checks, preflight_err),
+                None => None,
+            }
+        }
+    };
+
+    if let (true, Some(index)) = (cfg.over_ride, stopped_at) {
+        over_ride(cfg, index);
+    }
+}
+
 fn preflight(matches: &clap::ArgMatches) -> Result<()> {
     let cfg = check_local_config()?;
     let init = matches.get_one::<bool>("init");
@@ -440,10 +474,7 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
         update_config()?;
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
-        let preflight_report = preflight_checks(cfg.checks);
-        if let Err(preflight_error) = preflight_report {
-            println!("{preflight_error:?}");
-        }
+        preflight_checks(cfg, 0);
     }
     Ok(())
 }
