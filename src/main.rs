@@ -59,6 +59,10 @@
 //!     "check_benches", # `cargo check --benches`
 //!     "unused_deps", # uses `cargo-shear`
 //! ] # Default values: ["fmt", "test"]
+//!
+//! autofix = false # Enables autofix functionality
+//!
+//! over_ride = false # Enables override functionality
 //! ```
 //! # Using Preflight
 //!
@@ -76,7 +80,7 @@
 use anyhow::Result;
 use cargo_shear::{CargoShear, cargo_shear_options};
 use colored::Colorize;
-use inquire::{MultiSelect, Select};
+use inquire::{Confirm, MultiSelect, Select};
 use serde::{Deserialize, Serialize};
 use std::{
     env,
@@ -100,6 +104,8 @@ struct PreflightConfig {
     run_when: Vec<String>,
     // remote_branches: Vec<String>,
     checks: Vec<String>,
+    autofix: bool,
+    over_ride: bool,
 }
 
 impl Default for PreflightConfig {
@@ -108,6 +114,8 @@ impl Default for PreflightConfig {
             run_when: vec!["push".into()],
             // remote_branches: vec!["main".into(), "master".into()],
             checks: vec!["fmt".into(), "test".into()],
+            autofix: true,
+            over_ride: false,
         }
     }
 }
@@ -123,31 +131,31 @@ pub enum PreflightError {
     InvalidHook { config: String },
 
     /// `cargo fmt --check` preflight check failed
-    #[error("\n    {}{fmt_output}", "[x] Formatting preflight check failed".red().bold())]
+    #[error("    {}{fmt_output}", "[x] Formatting preflight check failed".red().bold())]
     FormatFailed { fmt_output: String },
 
     /// `cargo clippy -- -D warnings` preflight check failed
-    #[error("\n    {}{clippy_output}", "[x] Clippy preflight check failed:\n".red().bold())]
+    #[error("    {}{clippy_output}", "[x] Clippy preflight check failed:\n".red().bold())]
     ClippyFailed { clippy_output: String },
 
     /// `cargo check --tests` preflight check failed
-    #[error("\n    {}{check_outputs}", "[x] Check test preflight check failed:\n".red().bold())]
+    #[error("    {}{check_outputs}", "[x] Check test preflight check failed:\n".red().bold())]
     CheckTestsFailed { check_outputs: String },
 
     /// `cargo check --examples` preflight check failed
-    #[error("\n    {}{check_outputs}", "[x] Check examples preflight check failed:\n".red().bold())]
+    #[error("    {}{check_outputs}", "[x] Check examples preflight check failed:\n".red().bold())]
     CheckExamplesFailed { check_outputs: String },
 
     /// `cargo check --benches` preflight check failed
-    #[error("\n    {}{check_outputs}", "[x] Check benches preflight check failed:\n".red().bold())]
+    #[error("    {}{check_outputs}", "[x] Check benches preflight check failed:\n".red().bold())]
     CheckBenchesFailed { check_outputs: String },
 
     /// `cargo test` preflight check failed
-    #[error("\n    {}{test_outputs}", "[x] Test preflight check failed:\n".red().bold())]
+    #[error("    {}{test_outputs}", "[x] Test preflight check failed:\n".red().bold())]
     TestsFailed { test_outputs: String },
 
     /// `cargo shear` preflight check failed
-    #[error("\n    {}{shear_output}", "[x] Unused dependencies preflight check failed:\n".red().bold())]
+    #[error("    {}{shear_output}", "[x] Unused dependencies preflight check failed:\n".red().bold())]
     ShearFailed { shear_output: String },
 }
 
@@ -165,9 +173,8 @@ fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
     }
 }
 
-fn preflight_checks(cfg: PreflightConfig) -> Result<()> {
-    // get current workspace for tests and fmt
-    for check in cfg.checks {
+fn run_checks(checks: &[String]) -> Result<()> {
+    for check in checks {
         match check.as_str() {
             "fmt" => cargo_fmt(),
             "clippy" => cargo_clippy(),
@@ -176,7 +183,10 @@ fn preflight_checks(cfg: PreflightConfig) -> Result<()> {
             "check_benches" => cargo_check_benches(),
             "test" => cargo_test(),
             "unused_deps" => shear(),
-            _ => Err(PreflightError::InvalidCheck { config: check }.into()),
+            _ => Err(PreflightError::InvalidCheck {
+                config: check.to_owned(),
+            }
+            .into()),
         }?;
     }
     Ok(())
@@ -358,10 +368,10 @@ fn update_config() -> Result<()> {
         "fmt",
         "clippy",
         "test",
+        "unused_deps",
         "check_tests",
         "check_examples",
         "check_benches",
-        "unused_deps",
     ];
     let run_when = vec!["commit", "push"];
 
@@ -369,15 +379,34 @@ fn update_config() -> Result<()> {
         "Do you want to make a global or local config?",
         config_types,
     )
+    .with_vim_mode(true)
     .prompt()?;
 
-    let chosen_checks = MultiSelect::new("Select checks to run:", checks).prompt()?;
+    let chosen_checks = MultiSelect::new("Select checks to run:", checks)
+        .with_vim_mode(true)
+        .prompt()?;
 
-    let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when).prompt()?;
+    let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when)
+        .with_vim_mode(true)
+        .prompt()?;
+
+    let over_ride = Confirm::new("Enable override functionality?")
+        .with_default(false)
+        .with_help_message("This will allow you to override Preflight on failed checks")
+        .prompt()?;
+
+    let autofix = Confirm::new("Enable autofix functionality?")
+        .with_default(false)
+        .with_help_message(
+            "Where possible, this will enable you to automatically apply suggestions",
+        )
+        .prompt()?;
 
     let cfg = PreflightConfig {
         run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
         checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
+        autofix,
+        over_ride,
     };
 
     if config_type == "local" {
@@ -388,6 +417,54 @@ fn update_config() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize> {
+    // Map each error variant to the corresponding check name
+    let failed_check = match error {
+        PreflightError::FormatFailed { .. } => "fmt",
+        PreflightError::ClippyFailed { .. } => "clippy",
+        PreflightError::CheckTestsFailed { .. } => "check_tests",
+        PreflightError::CheckExamplesFailed { .. } => "check_examples",
+        PreflightError::CheckBenchesFailed { .. } => "check_benches",
+        PreflightError::TestsFailed { .. } => "test",
+        PreflightError::ShearFailed { .. } => "unused_deps",
+        PreflightError::InvalidCheck { config } => config.as_str(),
+        PreflightError::InvalidHook { .. } => "hook",
+    };
+
+    // Find the index of the failed check in the checks vector
+    checks.iter().position(|check| check == failed_check)
+}
+
+fn over_ride(cfg: PreflightConfig, index: usize) {
+    let ans = Confirm::new("Do you want to override {&cfg.checks[index]} preflight check?")
+        .with_default(false)
+        .with_help_message("This will skip {&cfg.checks[index]} and continue preflight checks")
+        .prompt();
+
+    match ans {
+        Ok(false) => (),
+        Ok(true) => preflight_checks(cfg, index + 1),
+        Err(_) => println!("Error overriding preflight"),
+    }
+}
+
+fn preflight_checks(cfg: PreflightConfig, start: usize) {
+    let stopped_at = match run_checks(&cfg.checks[start..]) {
+        Ok(()) => None,
+        Err(e) => {
+            println!("{e:?}");
+            match e.downcast_ref() {
+                Some(preflight_err) => failed_check_index(&cfg.checks, preflight_err),
+                None => None,
+            }
+        }
+    };
+
+    if let (true, Some(index)) = (cfg.over_ride, stopped_at) {
+        over_ride(cfg, index);
+    }
 }
 
 fn preflight(matches: &clap::ArgMatches) -> Result<()> {
@@ -401,7 +478,7 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
         update_config()?;
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
-        preflight_checks(cfg)?;
+        preflight_checks(cfg, 0);
     }
     Ok(())
 }

@@ -45,6 +45,10 @@ checks = [
     "check_benches", # `cargo check --benches`
     "unused_deps", # uses `cargo-shear`
 ] # Default values: ["fmt", "test"]
+
+autofix = false # Enables autofix functionality
+
+over_ride = false # Enables override functionality
 ```
 
 # Using Preflight
@@ -61,7 +65,7 @@ _Note: Currently, Preflight only supports Linux systems._
 
 # Roadmap
 
-- [ ] Override if checks fail
+- [x] Override if checks fail
 - [ ] Auto-fix failed checks (when applicable, ie. clippy, fmt)
 - [ ] Set which branch(es) Preflight will run against
 - [ ] Different checks for different hooks
