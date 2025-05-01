@@ -28,6 +28,8 @@ which will open a configuration wizard to walk you through the available options
 
 Alteratively, Preflight can be manually configured by editing the global `~/.config/cargo-preflight/preflight.toml` configuration or local `<your repo>/.preflight.toml` configuration files.
 
+_Remember to re-initialise in your repository if you change the `run_when` configuration, as the git hooks will need to be renewed._
+
 ## Possible Options
 
 ```toml
@@ -35,6 +37,14 @@ run_when = [
     "commit",
     "push",
 ] # Default values: ["push"]
+
+# List of branch names to run on, below is an example.
+# If the list is empty (default), then it will run on any branch.
+branches = [
+    "main",
+    "my_feature",
+    "supinie_dev",
+] # Default values: []
 
 checks = [
     "fmt", # `cargo fmt -- --check`
