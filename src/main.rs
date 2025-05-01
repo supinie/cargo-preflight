@@ -18,6 +18,8 @@
 )]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
+//! ## _Warning: Preflight is currently in development, and will be subject to breaking changes._
+//!
 //! # About
 //!
 //! Preflight is a custom Cargo subcommand to run local "CI" on certain Git actions.
@@ -42,6 +44,8 @@
 //!
 //! Alteratively, Preflight can be manually configured by editing the global `~/.config/cargo-preflight/preflight.toml` configuration or local `<your repo>/.preflight.toml` configuration files.
 //!
+//! _Remember to re-initialise in your repository if you change the `run_when` configuration, as the git hooks will need to be renewed._
+//!
 //! ## Possible Options
 //!
 //! ```toml
@@ -49,6 +53,14 @@
 //!     "commit",
 //!     "push",
 //! ] # Default values: ["push"]
+//!
+//! # List of branch names to run on, below is an example.
+//! # If the list is empty (default), then it will run on any branch.
+//! branches = [
+//!     "main",
+//!     "my_feature",
+//!     "supinie_dev",
+//! ] # Default values: []
 //!
 //! checks = [
 //!     "fmt", # `cargo fmt -- --check`
@@ -80,7 +92,11 @@
 use anyhow::Result;
 use cargo_shear::{CargoShear, cargo_shear_options};
 use colored::Colorize;
-use inquire::{Confirm, MultiSelect, Select};
+use fuzzy_matcher::{FuzzyMatcher, skim::SkimMatcherV2};
+use git2::{BranchType, Repository};
+use inquire::{
+    Autocomplete, Confirm, CustomUserError, MultiSelect, Select, Text, autocompletion::Replacement,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     env,
@@ -102,7 +118,7 @@ const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Sty
 #[derive(Debug, Serialize, Deserialize)]
 struct PreflightConfig {
     run_when: Vec<String>,
-    // remote_branches: Vec<String>,
+    branches: Vec<String>,
     checks: Vec<String>,
     autofix: bool,
     over_ride: bool,
@@ -112,7 +128,7 @@ impl Default for PreflightConfig {
     fn default() -> Self {
         Self {
             run_when: vec!["push".into()],
-            // remote_branches: vec!["main".into(), "master".into()],
+            branches: vec![],
             checks: vec!["fmt".into(), "test".into()],
             autofix: true,
             over_ride: false,
@@ -164,6 +180,152 @@ impl From<PreflightError> for std::io::Error {
         Self::other(err)
     }
 }
+
+#[derive(Clone, Default)]
+struct LocalBranchCompleter {
+    input: String,
+    branches: Vec<String>,
+}
+
+#[derive(Clone, Default)]
+struct GlobalBranchCompleter {
+    input: String,
+    branches: Vec<String>,
+}
+
+trait BranchCompleter {
+    fn update_input(&mut self, input: &str);
+    fn get_branches(&self) -> &[String];
+
+    fn fuzzy_sort(&self, input: &str) -> Vec<(String, i64)> {
+        let mut matches: Vec<(String, i64)> = self
+            .get_branches()
+            .iter()
+            .filter_map(|branch| {
+                SkimMatcherV2::default()
+                    .smart_case()
+                    .fuzzy_match(branch, input)
+                    .map(|score| (branch.clone(), score))
+            })
+            .collect();
+
+        matches.sort_by(|a, b| b.1.cmp(&a.1));
+        matches
+    }
+
+    fn get_last_word(input: &str) -> &str {
+        if input.chars().nth(input.len() - 1) == Some(' ') {
+            return "";
+        }
+        input.split_whitespace().last().unwrap_or("")
+    }
+
+    fn get_selected_branches(input: &str) -> Vec<String> {
+        input.split_whitespace().map(String::from).collect()
+    }
+}
+
+impl BranchCompleter for LocalBranchCompleter {
+    fn update_input(&mut self, input: &str) {
+        if input == self.input && !self.branches.is_empty() {
+            return;
+        }
+
+        input.clone_into(&mut self.input);
+        self.branches.clear();
+
+        if let Ok(branches) = get_branches() {
+            self.branches = branches;
+        } else {
+            self.branches = vec!["main".to_owned(), "master".to_owned()];
+        }
+    }
+
+    fn get_branches(&self) -> &[String] {
+        &self.branches
+    }
+}
+
+impl BranchCompleter for GlobalBranchCompleter {
+    fn update_input(&mut self, input: &str) {
+        if input == self.input && !self.branches.is_empty() {
+            return;
+        }
+
+        input.clone_into(&mut self.input);
+        self.branches.clear();
+
+        self.branches = vec!["main".to_owned(), "master".to_owned()];
+    }
+
+    fn get_branches(&self) -> &[String] {
+        &self.branches
+    }
+}
+
+macro_rules! impl_autocomplete {
+    ($type:ty) => {
+        impl Autocomplete for $type {
+            fn get_suggestions(
+                &mut self,
+                input: &str,
+            ) -> std::result::Result<Vec<String>, CustomUserError> {
+                self.update_input(input);
+
+                let last_word = Self::get_last_word(input);
+                let selected_branches = Self::get_selected_branches(input);
+
+                let matches = self.fuzzy_sort(last_word);
+                Ok(matches
+                    .into_iter()
+                    .map(|(branch, _)| branch)
+                    .filter(|branch| !selected_branches.contains(branch))
+                    .take(15)
+                    .collect())
+            }
+
+            fn get_completion(
+                &mut self,
+                input: &str,
+                highlighted_suggestion: Option<String>,
+            ) -> std::result::Result<Replacement, CustomUserError> {
+                self.update_input(input);
+
+                let mut selected_branches = Self::get_selected_branches(input);
+
+                Ok(if let Some(suggestion) = highlighted_suggestion {
+                    selected_branches.pop();
+                    Replacement::Some(
+                        selected_branches
+                            .into_iter()
+                            .chain(std::iter::once(suggestion))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    )
+                } else {
+                    let last_word = Self::get_last_word(input);
+                    let matches = self.fuzzy_sort(last_word);
+
+                    if let Some((branch, _)) = matches.first() {
+                        selected_branches.pop();
+                        Replacement::Some(
+                            selected_branches
+                                .into_iter()
+                                .chain(std::iter::once(branch.clone()))
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        )
+                    } else {
+                        Replacement::None
+                    }
+                })
+            }
+        }
+    };
+}
+
+impl_autocomplete!(LocalBranchCompleter);
+impl_autocomplete!(GlobalBranchCompleter);
 
 fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
     if exists("./.preflight.toml").expect("Can't check for local config") {
@@ -329,6 +491,27 @@ fn init_symlink(cfg: PreflightConfig) -> Result<()> {
     Ok(())
 }
 
+fn get_current_branch_name() -> Option<String> {
+    let repo = Repository::open(".").ok()?;
+    let head = repo.head().ok()?;
+    head.shorthand().map(String::from)
+}
+
+fn get_branches() -> Result<Vec<String>, git2::Error> {
+    let repo = Repository::open(".")?;
+
+    // Collect all branches into a vector
+    let branches = repo
+        .branches(Some(BranchType::Local))?
+        .filter_map(|branch_result| match branch_result {
+            Ok((branch, _)) => branch.name().ok().flatten().map(String::from),
+            Err(_) => None, // Ignore branches that fail to load
+        })
+        .collect();
+
+    Ok(branches)
+}
+
 #[allow(clippy::cognitive_complexity)]
 fn cargo_subcommand<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
     let cmd = clap::Command::new("cargo")
@@ -384,6 +567,18 @@ fn update_config() -> Result<()> {
         .with_vim_mode(true)
         .prompt()?;
 
+    let branches = if config_type == "global" {
+        Text::new("Choose branches to run checks on:")
+            .with_autocomplete(GlobalBranchCompleter::default())
+            .with_help_message("Leave blank to run on any branch")
+            .prompt()
+    } else {
+        Text::new("Choose branches to run checks on:")
+            .with_autocomplete(LocalBranchCompleter::default())
+            .with_help_message("Leave blank to run on any branch")
+            .prompt()
+    }?;
+
     let over_ride = Confirm::new("Enable override functionality?")
         .with_default(false)
         .with_help_message("This will allow you to override Preflight on failed checks")
@@ -398,6 +593,7 @@ fn update_config() -> Result<()> {
 
     let cfg = PreflightConfig {
         run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
+        branches: branches.split_whitespace().map(ToOwned::to_owned).collect(),
         checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
         autofix,
         over_ride,
@@ -528,7 +724,24 @@ fn autofix_prompt(cfg: &PreflightConfig, index: usize) -> Result<()> {
     }
 }
 
+fn check_branch_rules(branches: &[String]) -> bool {
+    if branches.is_empty() {
+        return true;
+    }
+    get_current_branch_name().map_or_else(|| {
+        println!(
+            "{}",
+            "It looks like you're not on a git branch... Preflight will continue, but there may be an error later".italic()
+        );
+        true
+    }, |branch| branches.contains(&branch))
+}
+
 fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
+    if !check_branch_rules(&cfg.branches) {
+        println!("Branch not included in preflight checks, exiting...");
+        return Ok(());
+    }
     let stopped_at = match run_checks(&cfg.checks[start..]) {
         Ok(()) => None,
         Err(e) => {

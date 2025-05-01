@@ -10,6 +10,8 @@ Preflight's aim is to ensure that trivially broken commits don't reach your remo
 
 Preflight runs as a git hook to automatically run checks on commit or push.
 
+## _Warning: Preflight is currently in development, and will be subject to breaking changes._
+
 # Installing Preflight
 
 ```
@@ -28,6 +30,8 @@ which will open a configuration wizard to walk you through the available options
 
 Alteratively, Preflight can be manually configured by editing the global `~/.config/cargo-preflight/preflight.toml` configuration or local `<your repo>/.preflight.toml` configuration files.
 
+_Remember to re-initialise in your repository if you change the `run_when` configuration, as the git hooks will need to be renewed._
+
 ## Possible Options
 
 ```toml
@@ -35,6 +39,14 @@ run_when = [
     "commit",
     "push",
 ] # Default values: ["push"]
+
+# List of branch names to run on, below is an example.
+# If the list is empty (default), then it will run on any branch.
+branches = [
+    "main",
+    "my_feature",
+    "supinie_dev",
+] # Default values: []
 
 checks = [
     "fmt", # `cargo fmt -- --check`
@@ -66,8 +78,8 @@ _Note: Currently, Preflight only supports Linux systems._
 # Roadmap
 
 - [x] Override if checks fail
-- [ ] Auto-fix failed checks (when applicable, ie. clippy, fmt)
-- [ ] Set which branch(es) Preflight will run against
+- [x] Auto-fix failed checks (when applicable, ie. clippy, fmt)
+- [x] Set which branch(es) Preflight will run against
 - [ ] Different checks for different hooks
 - [ ] Check for secrets
 - [ ] Check semver for libs
