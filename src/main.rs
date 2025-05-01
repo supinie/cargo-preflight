@@ -193,22 +193,39 @@ struct GlobalBranchCompleter {
     branches: Vec<String>,
 }
 
-fn get_branches() -> Result<Vec<String>, git2::Error> {
-    let repo = Repository::open(".")?;
+trait BranchCompleter {
+    fn update_input(&mut self, input: &str);
+    fn get_branches(&self) -> &[String];
 
-    // Collect all branches into a vector
-    let branches = repo
-        .branches(Some(BranchType::Local))?
-        .filter_map(|branch_result| match branch_result {
-            Ok((branch, _)) => branch.name().ok().flatten().map(String::from),
-            Err(_) => None, // Ignore branches that fail to load
-        })
-        .collect();
+    fn fuzzy_sort(&self, input: &str) -> Vec<(String, i64)> {
+        let mut matches: Vec<(String, i64)> = self
+            .get_branches()
+            .iter()
+            .filter_map(|branch| {
+                SkimMatcherV2::default()
+                    .smart_case()
+                    .fuzzy_match(branch, input)
+                    .map(|score| (branch.clone(), score))
+            })
+            .collect();
 
-    Ok(branches)
+        matches.sort_by(|a, b| b.1.cmp(&a.1));
+        matches
+    }
+
+    fn get_last_word(input: &str) -> &str {
+        if input.chars().nth(input.len() - 1) == Some(' ') {
+            return "";
+        }
+        input.split_whitespace().last().unwrap_or("")
+    }
+
+    fn get_selected_branches(input: &str) -> Vec<String> {
+        input.split_whitespace().map(String::from).collect()
+    }
 }
 
-impl LocalBranchCompleter {
+impl BranchCompleter for LocalBranchCompleter {
     fn update_input(&mut self, input: &str) {
         if input == self.input && !self.branches.is_empty() {
             return;
@@ -224,92 +241,12 @@ impl LocalBranchCompleter {
         }
     }
 
-    fn fuzzy_sort(&self, input: &str) -> Vec<(String, i64)> {
-        let mut matches: Vec<(String, i64)> = self
-            .branches
-            .iter()
-            .filter_map(|branch| {
-                SkimMatcherV2::default()
-                    .smart_case()
-                    .fuzzy_match(branch, input)
-                    .map(|score| (branch.clone(), score))
-            })
-            .collect();
-
-        matches.sort_by(|a, b| b.1.cmp(&a.1));
-        matches
-    }
-
-    fn get_last_word(input: &str) -> &str {
-        if input.chars().nth(input.len() - 1) == Some(' ') {
-            return "";
-        }
-        input.split_whitespace().last().unwrap_or("")
-    }
-
-    fn get_selected_branches(input: &str) -> Vec<String> {
-        input.split_whitespace().map(String::from).collect()
+    fn get_branches(&self) -> &[String] {
+        &self.branches
     }
 }
 
-impl Autocomplete for LocalBranchCompleter {
-    fn get_suggestions(
-        &mut self,
-        input: &str,
-    ) -> std::result::Result<Vec<String>, CustomUserError> {
-        self.update_input(input);
-
-        let last_word = Self::get_last_word(input);
-        let selected_branches = Self::get_selected_branches(input);
-
-        let matches = self.fuzzy_sort(last_word);
-        Ok(matches
-            .into_iter()
-            .map(|(branch, _)| branch)
-            .filter(|branch| !selected_branches.contains(branch))
-            .take(15)
-            .collect())
-    }
-
-    fn get_completion(
-        &mut self,
-        input: &str,
-        highlighted_suggestion: Option<String>,
-    ) -> std::result::Result<Replacement, CustomUserError> {
-        self.update_input(input);
-
-        let mut selected_branches = Self::get_selected_branches(input);
-
-        Ok(if let Some(suggestion) = highlighted_suggestion {
-            selected_branches.pop(); // Remove the incomplete last branch
-            Replacement::Some(
-                selected_branches
-                    .into_iter()
-                    .chain(std::iter::once(suggestion))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            )
-        } else {
-            let last_word = Self::get_last_word(input);
-            let matches = self.fuzzy_sort(last_word);
-
-            if let Some((branch, _)) = matches.first() {
-                selected_branches.pop(); // Remove the incomplete last branch
-                Replacement::Some(
-                    selected_branches
-                        .into_iter()
-                        .chain(std::iter::once(branch.clone()))
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                )
-            } else {
-                Replacement::None
-            }
-        })
-    }
-}
-
-impl GlobalBranchCompleter {
+impl BranchCompleter for GlobalBranchCompleter {
     fn update_input(&mut self, input: &str) {
         if input == self.input && !self.branches.is_empty() {
             return;
@@ -321,90 +258,74 @@ impl GlobalBranchCompleter {
         self.branches = vec!["main".to_owned(), "master".to_owned()];
     }
 
-    fn fuzzy_sort(&self, input: &str) -> Vec<(String, i64)> {
-        let mut matches: Vec<(String, i64)> = self
-            .branches
-            .iter()
-            .filter_map(|branch| {
-                SkimMatcherV2::default()
-                    .smart_case()
-                    .fuzzy_match(branch, input)
-                    .map(|score| (branch.clone(), score))
-            })
-            .collect();
-
-        matches.sort_by(|a, b| b.1.cmp(&a.1));
-        matches
-    }
-
-    fn get_last_word(input: &str) -> &str {
-        if input.chars().nth(input.len() - 1) == Some(' ') {
-            return "";
-        }
-        input.split_whitespace().last().unwrap_or("")
-    }
-
-    fn get_selected_branches(input: &str) -> Vec<String> {
-        input.split_whitespace().map(String::from).collect()
+    fn get_branches(&self) -> &[String] {
+        &self.branches
     }
 }
 
-impl Autocomplete for GlobalBranchCompleter {
-    fn get_suggestions(
-        &mut self,
-        input: &str,
-    ) -> std::result::Result<Vec<String>, CustomUserError> {
-        self.update_input(input);
+macro_rules! impl_autocomplete {
+    ($type:ty) => {
+        impl Autocomplete for $type {
+            fn get_suggestions(
+                &mut self,
+                input: &str,
+            ) -> std::result::Result<Vec<String>, CustomUserError> {
+                self.update_input(input);
 
-        let last_word = Self::get_last_word(input);
-        let selected_branches = Self::get_selected_branches(input);
+                let last_word = Self::get_last_word(input);
+                let selected_branches = Self::get_selected_branches(input);
 
-        let matches = self.fuzzy_sort(last_word);
-        Ok(matches
-            .into_iter()
-            .map(|(branch, _)| branch)
-            .filter(|branch| !selected_branches.contains(branch))
-            .take(15)
-            .collect())
-    }
-
-    fn get_completion(
-        &mut self,
-        input: &str,
-        highlighted_suggestion: Option<String>,
-    ) -> std::result::Result<Replacement, CustomUserError> {
-        self.update_input(input);
-
-        let mut selected_branches = Self::get_selected_branches(input);
-
-        Ok(if let Some(suggestion) = highlighted_suggestion {
-            selected_branches.pop(); // Remove the incomplete last branch
-            Replacement::Some(
-                selected_branches
+                let matches = self.fuzzy_sort(last_word);
+                Ok(matches
                     .into_iter()
-                    .chain(std::iter::once(suggestion))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            )
-        } else {
-            let last_word = Self::get_last_word(input);
-            let matches = self.fuzzy_sort(last_word);
-
-            if let Some((branch, _)) = matches.first() {
-                selected_branches.pop(); // Remove the incomplete last branch
-                Replacement::Some(
-                    selected_branches
-                        .into_iter()
-                        .chain(std::iter::once(branch.clone()))
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                )
-            } else {
-                Replacement::None
+                    .map(|(branch, _)| branch)
+                    .filter(|branch| !selected_branches.contains(branch))
+                    .take(15)
+                    .collect())
             }
-        })
-    }
+
+            fn get_completion(
+                &mut self,
+                input: &str,
+                highlighted_suggestion: Option<String>,
+            ) -> std::result::Result<Replacement, CustomUserError> {
+                self.update_input(input);
+
+                let mut selected_branches = Self::get_selected_branches(input);
+
+                Ok(if let Some(suggestion) = highlighted_suggestion {
+                    selected_branches.pop(); // Remove the incomplete last branch
+                    Replacement::Some(
+                        selected_branches
+                            .into_iter()
+                            .chain(std::iter::once(suggestion))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    )
+                } else {
+                    let last_word = Self::get_last_word(input);
+                    let matches = self.fuzzy_sort(last_word);
+
+                    if let Some((branch, _)) = matches.first() {
+                        selected_branches.pop(); // Remove the incomplete last branch
+                        Replacement::Some(
+                            selected_branches
+                                .into_iter()
+                                .chain(std::iter::once(branch.clone()))
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        )
+                    } else {
+                        Replacement::None
+                    }
+                })
+            }
+        }
+    };
 }
+
+impl_autocomplete!(LocalBranchCompleter);
+impl_autocomplete!(GlobalBranchCompleter);
 
 fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
     if exists("./.preflight.toml").expect("Can't check for local config") {
@@ -574,6 +495,21 @@ fn get_current_branch_name() -> Option<String> {
     let repo = Repository::open(".").ok()?;
     let head = repo.head().ok()?;
     head.shorthand().map(String::from)
+}
+
+fn get_branches() -> Result<Vec<String>, git2::Error> {
+    let repo = Repository::open(".")?;
+
+    // Collect all branches into a vector
+    let branches = repo
+        .branches(Some(BranchType::Local))?
+        .filter_map(|branch_result| match branch_result {
+            Ok((branch, _)) => branch.name().ok().flatten().map(String::from),
+            Err(_) => None, // Ignore branches that fail to load
+        })
+        .collect();
+
+    Ok(branches)
 }
 
 #[allow(clippy::cognitive_complexity)]
