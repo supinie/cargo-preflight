@@ -10,6 +10,8 @@ Preflight's aim is to ensure that trivially broken commits don't reach your remo
 
 Preflight runs as a git hook to automatically run checks on commit or push.
 
+## _Warning: Preflight is currently in development, and will be subject to breaking changes._
+
 # Installing Preflight
 
 ```
