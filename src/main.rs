@@ -182,7 +182,13 @@ impl From<PreflightError> for std::io::Error {
 }
 
 #[derive(Clone, Default)]
-struct BranchCompleter {
+struct LocalBranchCompleter {
+    input: String,
+    branches: Vec<String>,
+}
+
+#[derive(Clone, Default)]
+struct GlobalBranchCompleter {
     input: String,
     branches: Vec<String>,
 }
@@ -202,7 +208,7 @@ fn get_branches() -> Result<Vec<String>, git2::Error> {
     Ok(branches)
 }
 
-impl BranchCompleter {
+impl LocalBranchCompleter {
     fn update_input(&mut self, input: &str) {
         if input == self.input && !self.branches.is_empty() {
             return;
@@ -246,7 +252,104 @@ impl BranchCompleter {
     }
 }
 
-impl Autocomplete for BranchCompleter {
+impl Autocomplete for LocalBranchCompleter {
+    fn get_suggestions(
+        &mut self,
+        input: &str,
+    ) -> std::result::Result<Vec<String>, CustomUserError> {
+        self.update_input(input);
+
+        let last_word = Self::get_last_word(input);
+        let selected_branches = Self::get_selected_branches(input);
+
+        let matches = self.fuzzy_sort(last_word);
+        Ok(matches
+            .into_iter()
+            .map(|(branch, _)| branch)
+            .filter(|branch| !selected_branches.contains(branch))
+            .take(15)
+            .collect())
+    }
+
+    fn get_completion(
+        &mut self,
+        input: &str,
+        highlighted_suggestion: Option<String>,
+    ) -> std::result::Result<Replacement, CustomUserError> {
+        self.update_input(input);
+
+        let mut selected_branches = Self::get_selected_branches(input);
+
+        Ok(if let Some(suggestion) = highlighted_suggestion {
+            selected_branches.pop(); // Remove the incomplete last branch
+            Replacement::Some(
+                selected_branches
+                    .into_iter()
+                    .chain(std::iter::once(suggestion))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
+        } else {
+            let last_word = Self::get_last_word(input);
+            let matches = self.fuzzy_sort(last_word);
+
+            if let Some((branch, _)) = matches.first() {
+                selected_branches.pop(); // Remove the incomplete last branch
+                Replacement::Some(
+                    selected_branches
+                        .into_iter()
+                        .chain(std::iter::once(branch.clone()))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
+            } else {
+                Replacement::None
+            }
+        })
+    }
+}
+
+impl GlobalBranchCompleter {
+    fn update_input(&mut self, input: &str) {
+        if input == self.input && !self.branches.is_empty() {
+            return;
+        }
+
+        input.clone_into(&mut self.input);
+        self.branches.clear();
+
+        self.branches = vec!["main".to_owned(), "master".to_owned()];
+    }
+
+    fn fuzzy_sort(&self, input: &str) -> Vec<(String, i64)> {
+        let mut matches: Vec<(String, i64)> = self
+            .branches
+            .iter()
+            .filter_map(|branch| {
+                SkimMatcherV2::default()
+                    .smart_case()
+                    .fuzzy_match(branch, input)
+                    .map(|score| (branch.clone(), score))
+            })
+            .collect();
+
+        matches.sort_by(|a, b| b.1.cmp(&a.1));
+        matches
+    }
+
+    fn get_last_word(input: &str) -> &str {
+        if input.chars().nth(input.len() - 1) == Some(' ') {
+            return "";
+        }
+        input.split_whitespace().last().unwrap_or("")
+    }
+
+    fn get_selected_branches(input: &str) -> Vec<String> {
+        input.split_whitespace().map(String::from).collect()
+    }
+}
+
+impl Autocomplete for GlobalBranchCompleter {
     fn get_suggestions(
         &mut self,
         input: &str,
@@ -528,10 +631,17 @@ fn update_config() -> Result<()> {
         .with_vim_mode(true)
         .prompt()?;
 
-    let branches = Text::new("Choose branches to run checks on:")
-        .with_autocomplete(BranchCompleter::default())
-        .with_help_message("Leave blank to run on any branch")
-        .prompt()?;
+    let branches = if config_type == "global" {
+        Text::new("Choose branches to run checks on:")
+            .with_autocomplete(GlobalBranchCompleter::default())
+            .with_help_message("Leave blank to run on any branch")
+            .prompt()
+    } else {
+        Text::new("Choose branches to run checks on:")
+            .with_autocomplete(LocalBranchCompleter::default())
+            .with_help_message("Leave blank to run on any branch")
+            .prompt()
+    }?;
 
     let over_ride = Confirm::new("Enable override functionality?")
         .with_default(false)
