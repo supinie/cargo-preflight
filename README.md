@@ -66,7 +66,7 @@ _Note: Currently, Preflight only supports Linux systems._
 # Roadmap
 
 - [x] Override if checks fail
-- [ ] Auto-fix failed checks (when applicable, ie. clippy, fmt)
+- [x] Auto-fix failed checks (when applicable, ie. clippy, fmt)
 - [ ] Set which branch(es) Preflight will run against
 - [ ] Different checks for different hooks
 - [ ] Check for secrets
