@@ -80,6 +80,7 @@
 use anyhow::Result;
 use cargo_shear::{CargoShear, cargo_shear_options};
 use colored::Colorize;
+use git2::Repository;
 use inquire::{Confirm, MultiSelect, Select};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -329,6 +330,12 @@ fn init_symlink(cfg: PreflightConfig) -> Result<()> {
     Ok(())
 }
 
+fn get_current_branch_name() -> Option<String> {
+    let repo = Repository::open(".").ok()?;
+    let head = repo.head().ok()?;
+    head.shorthand().map(String::from)
+}
+
 #[allow(clippy::cognitive_complexity)]
 fn cargo_subcommand<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
     let cmd = clap::Command::new("cargo")
@@ -529,6 +536,7 @@ fn autofix_prompt(cfg: &PreflightConfig, index: usize) -> Result<()> {
 }
 
 fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
+    println!("{:?}", get_current_branch_name());
     let stopped_at = match run_checks(&cfg.checks[start..]) {
         Ok(()) => None,
         Err(e) => {
