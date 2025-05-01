@@ -294,7 +294,7 @@ macro_rules! impl_autocomplete {
                 let mut selected_branches = Self::get_selected_branches(input);
 
                 Ok(if let Some(suggestion) = highlighted_suggestion {
-                    selected_branches.pop(); // Remove the incomplete last branch
+                    selected_branches.pop();
                     Replacement::Some(
                         selected_branches
                             .into_iter()
@@ -307,7 +307,7 @@ macro_rules! impl_autocomplete {
                     let matches = self.fuzzy_sort(last_word);
 
                     if let Some((branch, _)) = matches.first() {
-                        selected_branches.pop(); // Remove the incomplete last branch
+                        selected_branches.pop();
                         Replacement::Some(
                             selected_branches
                                 .into_iter()
