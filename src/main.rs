@@ -103,7 +103,7 @@ const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Sty
 #[derive(Debug, Serialize, Deserialize)]
 struct PreflightConfig {
     run_when: Vec<String>,
-    // remote_branches: Vec<String>,
+    branches: Vec<String>,
     checks: Vec<String>,
     autofix: bool,
     over_ride: bool,
@@ -113,7 +113,7 @@ impl Default for PreflightConfig {
     fn default() -> Self {
         Self {
             run_when: vec!["push".into()],
-            // remote_branches: vec!["main".into(), "master".into()],
+            branches: vec![],
             checks: vec!["fmt".into(), "test".into()],
             autofix: true,
             over_ride: false,
@@ -405,6 +405,7 @@ fn update_config() -> Result<()> {
 
     let cfg = PreflightConfig {
         run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
+        branches: vec![],
         checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
         autofix,
         over_ride,
@@ -535,8 +536,24 @@ fn autofix_prompt(cfg: &PreflightConfig, index: usize) -> Result<()> {
     }
 }
 
+fn check_branch_rules(branches: &[String]) -> bool {
+    if branches.is_empty() {
+        return true;
+    }
+    get_current_branch_name().map_or_else(|| {
+        println!(
+            "{}",
+            "It looks like you're not on a git branch... Preflight will continue, but there may be an error later".italic()
+        );
+        true
+    }, |branch| branches.contains(&branch))
+}
+
 fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
-    println!("{:?}", get_current_branch_name());
+    if !check_branch_rules(&cfg.branches) {
+        println!("Branch not included in preflight checks, exiting...");
+        return Ok(());
+    }
     let stopped_at = match run_checks(&cfg.checks[start..]) {
         Ok(()) => None,
         Err(e) => {
