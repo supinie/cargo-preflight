@@ -30,11 +30,10 @@ which will open a configuration wizard to walk you through the available options
 
 Alteratively, Preflight can be manually configured by editing the global `~/.config/cargo-preflight/preflight.toml` configuration or local `<your repo>/.preflight.toml` configuration files.
 
-_Remember to re-initialise in your repository if you change the `run_when` configuration, as the git hooks will need to be renewed._
-
 ## Possible Options
 
 ```toml
+[[preflight]] # Create new table entry for different behaviours
 run_when = [
     "commit",
     "push",
@@ -63,6 +62,35 @@ autofix = false # Enables autofix functionality (for fmt and clippy)
 over_ride = false # Enables override functionality
 ```
 
+## Example Config:
+
+```toml
+[[preflight]]
+run_when = ["commit"]
+branches = []
+checks = [
+    "fmt",
+    "clippy",
+]
+autofix = true
+over_ride = true
+
+[[preflight]]
+run_when = ["push"]
+branches = [
+    "main",
+    "master",
+]
+checks = [
+    "fmt",
+    "clippy",
+    "test",
+    "unused_deps",
+]
+autofix = false
+over_ride = false
+```
+
 # Using Preflight
 
 Preflight can be enabled in a repository by running:
@@ -80,7 +108,7 @@ _Note: Currently, Preflight only supports Linux systems._
 - [x] Override if checks fail
 - [x] Auto-fix failed checks (when applicable, ie. clippy, fmt)
 - [x] Set which branch(es) Preflight will run against
-- [ ] Different checks for different hooks
+- [x] Different checks for different hooks
 - [ ] Check for secrets
 - [ ] Check semver for libs
 - [ ] Check multiple commits for last "stable" commit

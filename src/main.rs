@@ -44,11 +44,10 @@
 //!
 //! Alteratively, Preflight can be manually configured by editing the global `~/.config/cargo-preflight/preflight.toml` configuration or local `<your repo>/.preflight.toml` configuration files.
 //!
-//! _Remember to re-initialise in your repository if you change the `run_when` configuration, as the git hooks will need to be renewed._
-//!
 //! ## Possible Options
 //!
 //! ```toml
+//! [[preflight]] # Create new table entry for different behaviours
 //! run_when = [
 //!     "commit",
 //!     "push",
@@ -76,6 +75,36 @@
 //!
 //! over_ride = false # Enables override functionality
 //! ```
+//!
+//! ## Example Config:
+//!
+//! ```toml
+//! [[preflight]]
+//! run_when = ["commit"]
+//! branches = []
+//! checks = [
+//!     "fmt",
+//!     "clippy",
+//! ]
+//! autofix = true
+//! over_ride = true
+//!
+//! [[preflight]]
+//! run_when = ["push"]
+//! branches = [
+//!     "main",
+//!     "master",
+//! ]
+//! checks = [
+//!     "fmt",
+//!     "clippy",
+//!     "test",
+//!     "unused_deps",
+//! ]
+//! autofix = false
+//! over_ride = false
+//! ```
+//!
 //! # Using Preflight
 //!
 //! Preflight can be enabled in a repository by running:
@@ -83,8 +112,6 @@
 //! ```sh
 //! cargo preflight --init
 //! ```
-//!
-//! Preflight can also be run as a one-off test with the `cargo preflight` command.
 //!
 //! _Note: Currently, Preflight only supports Linux systems._
 //!
@@ -564,7 +591,7 @@ fn update_config() -> Result<()> {
             .prompt()?;
 
         let branches = if config_type == "global" {
-            Text::new("Choose branches to run checks on:")
+            Text::new("Choose branches to run checks on (space seperated list):")
                 .with_autocomplete(GlobalBranchCompleter::default())
                 .with_help_message("Leave blank to run on any branch")
                 .prompt()
