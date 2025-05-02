@@ -573,7 +573,7 @@ fn update_config() -> Result<()> {
             .with_help_message("Leave blank to run on any branch")
             .prompt()
     } else {
-        Text::new("Choose branches to run checks on:")
+        Text::new("Choose branches to run checks on (space seperated list):")
             .with_autocomplete(LocalBranchCompleter::default())
             .with_help_message("Leave blank to run on any branch")
             .prompt()
