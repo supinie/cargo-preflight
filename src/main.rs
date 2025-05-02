@@ -533,18 +533,9 @@ fn parse_args<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
 }
 
 fn update_config() -> Result<()> {
-    let config_types = vec!["global", "local"];
-    let checks = vec![
-        "fmt",
-        "clippy",
-        "test",
-        "unused_deps",
-        "check_tests",
-        "check_examples",
-        "check_benches",
-    ];
-    let run_when = vec!["commit", "push"];
+    let mut preflight_configs = Vec::new();
 
+    let config_types = vec!["global", "local"];
     let config_type = Select::new(
         "Do you want to make a global or local config?",
         config_types,
@@ -552,51 +543,80 @@ fn update_config() -> Result<()> {
     .with_vim_mode(true)
     .prompt()?;
 
-    let chosen_checks = MultiSelect::new("Select checks to run:", checks)
-        .with_vim_mode(true)
-        .prompt()?;
+    loop {
+        let checks = vec![
+            "fmt",
+            "clippy",
+            "test",
+            "unused_deps",
+            "check_tests",
+            "check_examples",
+            "check_benches",
+        ];
+        let run_when = vec!["commit", "push"];
 
-    let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when)
-        .with_vim_mode(true)
-        .prompt()?;
+        let chosen_checks = MultiSelect::new("Select checks to run:", checks)
+            .with_vim_mode(true)
+            .prompt()?;
 
-    let branches = if config_type == "global" {
-        Text::new("Choose branches to run checks on:")
-            .with_autocomplete(GlobalBranchCompleter::default())
-            .with_help_message("Leave blank to run on any branch")
-            .prompt()
-    } else {
-        Text::new("Choose branches to run checks on (space seperated list):")
-            .with_autocomplete(LocalBranchCompleter::default())
-            .with_help_message("Leave blank to run on any branch")
-            .prompt()
-    }?;
+        let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when)
+            .with_vim_mode(true)
+            .prompt()?;
 
-    let over_ride = Confirm::new("Enable override functionality?")
-        .with_default(false)
-        .with_help_message("This will allow you to override Preflight on failed checks")
-        .prompt()?;
+        let branches = if config_type == "global" {
+            Text::new("Choose branches to run checks on:")
+                .with_autocomplete(GlobalBranchCompleter::default())
+                .with_help_message("Leave blank to run on any branch")
+                .prompt()
+        } else {
+            Text::new("Choose branches to run checks on (space separated list):")
+                .with_autocomplete(LocalBranchCompleter::default())
+                .with_help_message("Leave blank to run on any branch")
+                .prompt()
+        }?;
 
-    let autofix = Confirm::new("Enable autofix functionality?")
-        .with_default(false)
-        .with_help_message(
-            "Where possible, this will enable you to automatically apply suggestions",
-        )
-        .prompt()?;
+        let autofix = Confirm::new("Enable autofix functionality?")
+            .with_default(false)
+            .with_help_message(
+                "Where possible, this will enable you to automatically apply suggestions",
+            )
+            .prompt()?;
 
-    let cfg = PreflightConfig {
-        run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
-        branches: branches.split_whitespace().map(ToOwned::to_owned).collect(),
-        checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
-        autofix,
-        over_ride,
+        let over_ride = Confirm::new("Enable override functionality?")
+            .with_default(false)
+            .with_help_message("This will allow you to override Preflight on failed checks")
+            .prompt()?;
+
+        let cfg = PreflightConfig {
+            run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
+            branches: branches.split_whitespace().map(ToOwned::to_owned).collect(),
+            checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
+            autofix,
+            over_ride,
+        };
+
+        preflight_configs.push(cfg);
+
+        let add_more = Confirm::new("Do you want to add another configuration?")
+            .with_default(false)
+            .with_help_message("Choose 'yes' to create another configuration.")
+            .prompt()?;
+
+        if !add_more {
+            break;
+        }
+    }
+
+    let wrapped_configs = PreflightConfigWrapper {
+        preflight: preflight_configs,
     };
 
-    if config_type == "local" {
-        let path = std::path::Path::new("./.preflight.toml");
-        confy::store_path(path, cfg)?;
+    // Save the configurations
+    if config_type == "global" {
+        confy::store("cargo-preflight", "preflight", wrapped_configs)?;
     } else {
-        confy::store("cargo-preflight", "preflight", cfg)?;
+        let path = std::path::Path::new("./.preflight.toml");
+        confy::store_path(path, wrapped_configs)?;
     }
 
     Ok(())
