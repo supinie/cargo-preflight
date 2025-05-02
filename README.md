@@ -109,11 +109,11 @@ _Note: Currently, Preflight only supports Linux systems._
 - [x] Auto-fix failed checks (when applicable, ie. clippy, fmt)
 - [x] Set which branch(es) Preflight will run against
 - [x] Different checks for different hooks
+- [x] Automatically remove unused hooks
+- [x] Properly overwrite old hooks
 - [ ] Check for secrets
 - [ ] Check semver for libs
 - [ ] Check multiple commits for last "stable" commit
 - [ ] Run on `cargo publish`
-- [ ] Automatically remove unused hooks
-- [ ] Properly overwrite old hooks
 
 These are in no particular order, and many will introduce breaking changes.
