@@ -136,6 +136,19 @@ impl Default for PreflightConfig {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct PreflightConfigWrapper {
+    preflight: Vec<PreflightConfig>,
+}
+
+impl Default for PreflightConfigWrapper {
+    fn default() -> Self {
+        Self {
+            preflight: vec![PreflightConfig::default()],
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum PreflightError {
     /// Invalid entry in `checks` in Preflight config, see [valid options](index.html#possible-options)
@@ -327,7 +340,7 @@ macro_rules! impl_autocomplete {
 impl_autocomplete!(LocalBranchCompleter);
 impl_autocomplete!(GlobalBranchCompleter);
 
-fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
+fn check_local_config() -> Result<PreflightConfigWrapper, confy::ConfyError> {
     if exists("./.preflight.toml").expect("Can't check for local config") {
         confy::load_path("./.preflight.toml")
     } else {
@@ -478,16 +491,11 @@ fn shear() -> Result<()> {
     }
 }
 
-fn init_symlink(cfg: PreflightConfig) -> Result<()> {
+fn init_symlink() -> Result<()> {
     let mut path = dirs::home_dir().expect("No valid home dir found");
     path.push(".cargo/bin/cargo-preflight");
-    for hook in cfg.run_when {
-        match hook.as_str() {
-            "commit" => std::os::unix::fs::symlink(&path, "./.git/hooks/pre-commit"),
-            "push" => std::os::unix::fs::symlink(&path, "./.git/hooks/pre-push"),
-            _ => Err(PreflightError::InvalidHook { config: hook }.into()),
-        }?;
-    }
+    std::os::unix::fs::symlink(&path, "./.git/hooks/pre-commit")?;
+    std::os::unix::fs::symlink(&path, "./.git/hooks/pre-push")?;
     Ok(())
 }
 
@@ -766,18 +774,21 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
     let configure = matches.get_one::<bool>("config");
     if init == Some(&true) {
         println!("Initialising...");
-        init_symlink(cfg)?;
+        init_symlink()?;
     } else if configure == Some(&true) {
         update_config()?;
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
-        preflight_checks(&cfg, 0)?;
+        for config in &cfg.preflight {
+            preflight_checks(config, 0)?;
+        }
     }
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args();
+    println!("{args:?}");
     let binary_name = args.next().unwrap_or_default();
 
     let matches = if binary_name.ends_with("cargo") && args.next().as_deref() == Some("preflight") {
