@@ -643,19 +643,15 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
 
 fn over_ride(cfg: &PreflightConfig, index: usize) -> Result<()> {
     let check = &cfg.checks[index];
-    let ans = Confirm::new(&format!(
-        "Do you want to override {} preflight check?",
-        check
-    ))
-    .with_default(false)
-    .with_help_message(&format!(
-        "This will skip {} and continue preflight checks",
-        check
-    ))
-    .prompt()?;
+    let ans = Confirm::new(&format!("Do you want to override {check} preflight check?",))
+        .with_default(false)
+        .with_help_message(&format!(
+            "This will skip {check} and continue preflight checks",
+        ))
+        .prompt()?;
 
     if ans {
-        println!("Skipping {}...", check);
+        println!("Skipping {check}...");
         preflight_checks(cfg, index + 1)?;
     } else {
         return Err(PreflightError::OverrideCancelled {
@@ -803,7 +799,7 @@ fn preflight(matches: &clap::ArgMatches, hook: &str) -> Result<()> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args();
     let hook_arg = args.next().unwrap_or_default();
-    let hook = hook_arg.split('-').last().unwrap_or_default();
+    let hook = hook_arg.split('-').next_back().unwrap_or_default();
 
     let matches = parse_args(args);
 
