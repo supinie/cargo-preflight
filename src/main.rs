@@ -817,6 +817,10 @@ fn preflight(matches: &clap::ArgMatches, hook: &str) -> Result<()> {
         for config in &cfg.preflight {
             if config.run_when.contains(&hook.to_owned()) {
                 preflight_checks(config, 0)?;
+            } else if hook == "preflight" {
+                println!("Running all defined preflight checks...");
+                println!("{:?} checks:", config.run_when);
+                preflight_checks(config, 0)?;
             }
         }
     }
