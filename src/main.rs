@@ -44,11 +44,10 @@
 //!
 //! Alteratively, Preflight can be manually configured by editing the global `~/.config/cargo-preflight/preflight.toml` configuration or local `<your repo>/.preflight.toml` configuration files.
 //!
-//! _Remember to re-initialise in your repository if you change the `run_when` configuration, as the git hooks will need to be renewed._
-//!
 //! ## Possible Options
 //!
 //! ```toml
+//! [[preflight]] # Create new table entry for different behaviours
 //! run_when = [
 //!     "commit",
 //!     "push",
@@ -76,6 +75,36 @@
 //!
 //! over_ride = false # Enables override functionality
 //! ```
+//!
+//! ## Example Config:
+//!
+//! ```toml
+//! [[preflight]]
+//! run_when = ["commit"]
+//! branches = []
+//! checks = [
+//!     "fmt",
+//!     "clippy",
+//! ]
+//! autofix = true
+//! over_ride = true
+//!
+//! [[preflight]]
+//! run_when = ["push"]
+//! branches = [
+//!     "main",
+//!     "master",
+//! ]
+//! checks = [
+//!     "fmt",
+//!     "clippy",
+//!     "test",
+//!     "unused_deps",
+//! ]
+//! autofix = false
+//! over_ride = false
+//! ```
+//!
 //! # Using Preflight
 //!
 //! Preflight can be enabled in a repository by running:
@@ -83,8 +112,6 @@
 //! ```sh
 //! cargo preflight --init
 //! ```
-//!
-//! Preflight can also be run as a one-off test with the `cargo preflight` command.
 //!
 //! _Note: Currently, Preflight only supports Linux systems._
 //!
@@ -136,6 +163,19 @@ impl Default for PreflightConfig {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct PreflightConfigWrapper {
+    preflight: Vec<PreflightConfig>,
+}
+
+impl Default for PreflightConfigWrapper {
+    fn default() -> Self {
+        Self {
+            preflight: vec![PreflightConfig::default()],
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum PreflightError {
     /// Invalid entry in `checks` in Preflight config, see [valid options](index.html#possible-options)
@@ -173,6 +213,9 @@ pub enum PreflightError {
     /// `cargo shear` preflight check failed
     #[error("    {}{shear_output}", "[x] Unused dependencies preflight check failed:\n".red().bold())]
     ShearFailed { shear_output: String },
+
+    #[error("    {}{failed_check}", "Preflight ended due to failed check: ".red().bold())]
+    OverrideCancelled { failed_check: String },
 }
 
 impl From<PreflightError> for std::io::Error {
@@ -327,7 +370,7 @@ macro_rules! impl_autocomplete {
 impl_autocomplete!(LocalBranchCompleter);
 impl_autocomplete!(GlobalBranchCompleter);
 
-fn check_local_config() -> Result<PreflightConfig, confy::ConfyError> {
+fn check_local_config() -> Result<PreflightConfigWrapper, confy::ConfyError> {
     if exists("./.preflight.toml").expect("Can't check for local config") {
         confy::load_path("./.preflight.toml")
     } else {
@@ -478,16 +521,11 @@ fn shear() -> Result<()> {
     }
 }
 
-fn init_symlink(cfg: PreflightConfig) -> Result<()> {
+fn init_symlink() -> Result<()> {
     let mut path = dirs::home_dir().expect("No valid home dir found");
     path.push(".cargo/bin/cargo-preflight");
-    for hook in cfg.run_when {
-        match hook.as_str() {
-            "commit" => std::os::unix::fs::symlink(&path, "./.git/hooks/pre-commit"),
-            "push" => std::os::unix::fs::symlink(&path, "./.git/hooks/pre-push"),
-            _ => Err(PreflightError::InvalidHook { config: hook }.into()),
-        }?;
-    }
+    std::os::unix::fs::symlink(&path, "./.git/hooks/pre-commit")?;
+    std::os::unix::fs::symlink(&path, "./.git/hooks/pre-push")?;
     Ok(())
 }
 
@@ -512,25 +550,7 @@ fn get_branches() -> Result<Vec<String>, git2::Error> {
     Ok(branches)
 }
 
-#[allow(clippy::cognitive_complexity)]
-fn cargo_subcommand<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
-    let cmd = clap::Command::new("cargo")
-        .bin_name("cargo")
-        .styles(CLAP_STYLING)
-        .subcommand_required(true)
-        .subcommand(
-            clap::command!("preflight")
-                .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
-                .arg(clap::arg!(<REMOTE>).value_parser(clap::value_parser!(String)))
-                .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool))),
-        );
-    match cmd.get_matches_from(args).subcommand() {
-        Some(("preflight", matches)) => matches.clone(),
-        _ => unreachable!("clap should ensure we don't get here"),
-    }
-}
-
-fn standalone_command<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
+fn parse_args<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
     let cmd = clap::Command::new("cargo-preflight")
         .styles(CLAP_STYLING)
         .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
@@ -540,18 +560,9 @@ fn standalone_command<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
 }
 
 fn update_config() -> Result<()> {
-    let config_types = vec!["global", "local"];
-    let checks = vec![
-        "fmt",
-        "clippy",
-        "test",
-        "unused_deps",
-        "check_tests",
-        "check_examples",
-        "check_benches",
-    ];
-    let run_when = vec!["commit", "push"];
+    let mut preflight_configs = Vec::new();
 
+    let config_types = vec!["global", "local"];
     let config_type = Select::new(
         "Do you want to make a global or local config?",
         config_types,
@@ -559,51 +570,80 @@ fn update_config() -> Result<()> {
     .with_vim_mode(true)
     .prompt()?;
 
-    let chosen_checks = MultiSelect::new("Select checks to run:", checks)
-        .with_vim_mode(true)
-        .prompt()?;
+    loop {
+        let checks = vec![
+            "fmt",
+            "clippy",
+            "test",
+            "unused_deps",
+            "check_tests",
+            "check_examples",
+            "check_benches",
+        ];
+        let run_when = vec!["commit", "push"];
 
-    let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when)
-        .with_vim_mode(true)
-        .prompt()?;
+        let chosen_checks = MultiSelect::new("Select checks to run:", checks)
+            .with_vim_mode(true)
+            .prompt()?;
 
-    let branches = if config_type == "global" {
-        Text::new("Choose branches to run checks on:")
-            .with_autocomplete(GlobalBranchCompleter::default())
-            .with_help_message("Leave blank to run on any branch")
-            .prompt()
-    } else {
-        Text::new("Choose branches to run checks on:")
-            .with_autocomplete(LocalBranchCompleter::default())
-            .with_help_message("Leave blank to run on any branch")
-            .prompt()
-    }?;
+        let chosen_run_when = MultiSelect::new("Select when to run checks:", run_when)
+            .with_vim_mode(true)
+            .prompt()?;
 
-    let over_ride = Confirm::new("Enable override functionality?")
-        .with_default(false)
-        .with_help_message("This will allow you to override Preflight on failed checks")
-        .prompt()?;
+        let branches = if config_type == "global" {
+            Text::new("Choose branches to run checks on (space seperated list):")
+                .with_autocomplete(GlobalBranchCompleter::default())
+                .with_help_message("Leave blank to run on any branch")
+                .prompt()
+        } else {
+            Text::new("Choose branches to run checks on (space separated list):")
+                .with_autocomplete(LocalBranchCompleter::default())
+                .with_help_message("Leave blank to run on any branch")
+                .prompt()
+        }?;
 
-    let autofix = Confirm::new("Enable autofix functionality?")
-        .with_default(false)
-        .with_help_message(
-            "Where possible, this will enable you to automatically apply suggestions",
-        )
-        .prompt()?;
+        let autofix = Confirm::new("Enable autofix functionality?")
+            .with_default(false)
+            .with_help_message(
+                "Where possible, this will enable you to automatically apply suggestions",
+            )
+            .prompt()?;
 
-    let cfg = PreflightConfig {
-        run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
-        branches: branches.split_whitespace().map(ToOwned::to_owned).collect(),
-        checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
-        autofix,
-        over_ride,
+        let over_ride = Confirm::new("Enable override functionality?")
+            .with_default(false)
+            .with_help_message("This will allow you to override Preflight on failed checks")
+            .prompt()?;
+
+        let cfg = PreflightConfig {
+            run_when: chosen_run_when.into_iter().map(ToOwned::to_owned).collect(),
+            branches: branches.split_whitespace().map(ToOwned::to_owned).collect(),
+            checks: chosen_checks.into_iter().map(ToOwned::to_owned).collect(),
+            autofix,
+            over_ride,
+        };
+
+        preflight_configs.push(cfg);
+
+        let add_more = Confirm::new("Do you want to add another configuration?")
+            .with_default(false)
+            .with_help_message("Choose 'yes' to create another configuration.")
+            .prompt()?;
+
+        if !add_more {
+            break;
+        }
+    }
+
+    let wrapped_configs = PreflightConfigWrapper {
+        preflight: preflight_configs,
     };
 
-    if config_type == "local" {
-        let path = std::path::Path::new("./.preflight.toml");
-        confy::store_path(path, cfg)?;
+    // Save the configurations
+    if config_type == "global" {
+        confy::store("cargo-preflight", "preflight", wrapped_configs)?;
     } else {
-        confy::store("cargo-preflight", "preflight", cfg)?;
+        let path = std::path::Path::new("./.preflight.toml");
+        confy::store_path(path, wrapped_configs)?;
     }
 
     Ok(())
@@ -621,6 +661,7 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
         PreflightError::ShearFailed { .. } => "unused_deps",
         PreflightError::InvalidCheck { config } => config.as_str(),
         PreflightError::InvalidHook { .. } => "hook",
+        PreflightError::OverrideCancelled { .. } => unreachable!(),
     };
 
     // Find the index of the failed check in the checks vector
@@ -628,20 +669,22 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
 }
 
 fn over_ride(cfg: &PreflightConfig, index: usize) -> Result<()> {
-    let ans = Confirm::new(&format!(
-        "Do you want to override {} preflight check?",
-        &cfg.checks[index]
-    ))
-    .with_default(false)
-    .with_help_message(&format!(
-        "This will skip {} and continue preflight checks",
-        &cfg.checks[index]
-    ))
-    .prompt()?;
+    let check = &cfg.checks[index];
+    let ans = Confirm::new(&format!("Do you want to override {check} preflight check?",))
+        .with_default(false)
+        .with_help_message(&format!(
+            "This will skip {check} and continue preflight checks",
+        ))
+        .prompt()?;
 
     if ans {
-        println!("Skipping {}...", &cfg.checks[index]);
+        println!("Skipping {check}...");
         preflight_checks(cfg, index + 1)?;
+    } else {
+        return Err(PreflightError::OverrideCancelled {
+            failed_check: check.to_owned(),
+        }
+        .into());
     }
 
     Ok(())
@@ -760,32 +803,37 @@ fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
     Ok(())
 }
 
-fn preflight(matches: &clap::ArgMatches) -> Result<()> {
+fn preflight(matches: &clap::ArgMatches, hook: &str) -> Result<()> {
     let cfg = check_local_config()?;
     let init = matches.get_one::<bool>("init");
     let configure = matches.get_one::<bool>("config");
     if init == Some(&true) {
         println!("Initialising...");
-        init_symlink(cfg)?;
+        init_symlink()?;
     } else if configure == Some(&true) {
         update_config()?;
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
-        preflight_checks(&cfg, 0)?;
+        for config in &cfg.preflight {
+            if config.run_when.contains(&hook.to_owned()) {
+                preflight_checks(config, 0)?;
+            } else if hook == "preflight" {
+                println!("Running all defined preflight checks...");
+                println!("{:?} checks:", config.run_when);
+                preflight_checks(config, 0)?;
+            }
+        }
     }
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args();
-    let binary_name = args.next().unwrap_or_default();
+    let hook_arg = args.next().unwrap_or_default();
+    let hook = hook_arg.split('-').next_back().unwrap_or_default();
 
-    let matches = if binary_name.ends_with("cargo") && args.next().as_deref() == Some("preflight") {
-        cargo_subcommand(args)
-    } else {
-        standalone_command(args)
-    };
+    let matches = parse_args(args);
 
-    preflight(&matches)?;
+    preflight(&matches, hook)?;
     Ok(())
 }
