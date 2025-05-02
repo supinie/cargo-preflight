@@ -520,25 +520,7 @@ fn get_branches() -> Result<Vec<String>, git2::Error> {
     Ok(branches)
 }
 
-#[allow(clippy::cognitive_complexity)]
-fn cargo_subcommand<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
-    let cmd = clap::Command::new("cargo")
-        .bin_name("cargo")
-        .styles(CLAP_STYLING)
-        .subcommand_required(true)
-        .subcommand(
-            clap::command!("preflight")
-                .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
-                .arg(clap::arg!(<REMOTE>).value_parser(clap::value_parser!(String)))
-                .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool))),
-        );
-    match cmd.get_matches_from(args).subcommand() {
-        Some(("preflight", matches)) => matches.clone(),
-        _ => unreachable!("clap should ensure we don't get here"),
-    }
-}
-
-fn standalone_command<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
+fn parse_args<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
     let cmd = clap::Command::new("cargo-preflight")
         .styles(CLAP_STYLING)
         .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
@@ -768,7 +750,7 @@ fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
     Ok(())
 }
 
-fn preflight(matches: &clap::ArgMatches) -> Result<()> {
+fn preflight(matches: &clap::ArgMatches, hook: &str) -> Result<()> {
     let cfg = check_local_config()?;
     let init = matches.get_one::<bool>("init");
     let configure = matches.get_one::<bool>("config");
@@ -780,7 +762,11 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
         for config in &cfg.preflight {
-            preflight_checks(config, 0)?;
+            println!("{:?}", config.run_when);
+            println!("{hook}");
+            if config.run_when.contains(&hook.to_owned()) {
+                preflight_checks(config, 0)?;
+            }
         }
     }
     Ok(())
@@ -788,15 +774,12 @@ fn preflight(matches: &clap::ArgMatches) -> Result<()> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args();
-    println!("{args:?}");
-    let binary_name = args.next().unwrap_or_default();
+    let hook_arg = args.next().unwrap_or_default();
+    let hook = hook_arg.split('-').last().unwrap_or_default();
+    println!("{hook:?}");
 
-    let matches = if binary_name.ends_with("cargo") && args.next().as_deref() == Some("preflight") {
-        cargo_subcommand(args)
-    } else {
-        standalone_command(args)
-    };
+    let matches = parse_args(args);
 
-    preflight(&matches)?;
+    preflight(&matches, hook)?;
     Ok(())
 }
