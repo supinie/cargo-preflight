@@ -186,6 +186,9 @@ pub enum PreflightError {
     /// `cargo shear` preflight check failed
     #[error("    {}{shear_output}", "[x] Unused dependencies preflight check failed:\n".red().bold())]
     ShearFailed { shear_output: String },
+
+    #[error("    {}{failed_check}", "Preflight ended due to failed check: ".red().bold())]
+    OverrideCancelled { failed_check: String },
 }
 
 impl From<PreflightError> for std::io::Error {
@@ -611,6 +614,7 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
         PreflightError::ShearFailed { .. } => "unused_deps",
         PreflightError::InvalidCheck { config } => config.as_str(),
         PreflightError::InvalidHook { .. } => "hook",
+        PreflightError::OverrideCancelled { .. } => unreachable!(),
     };
 
     // Find the index of the failed check in the checks vector
@@ -618,20 +622,26 @@ fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<usize
 }
 
 fn over_ride(cfg: &PreflightConfig, index: usize) -> Result<()> {
+    let check = &cfg.checks[index];
     let ans = Confirm::new(&format!(
         "Do you want to override {} preflight check?",
-        &cfg.checks[index]
+        check
     ))
     .with_default(false)
     .with_help_message(&format!(
         "This will skip {} and continue preflight checks",
-        &cfg.checks[index]
+        check
     ))
     .prompt()?;
 
     if ans {
-        println!("Skipping {}...", &cfg.checks[index]);
+        println!("Skipping {}...", check);
         preflight_checks(cfg, index + 1)?;
+    } else {
+        return Err(PreflightError::OverrideCancelled {
+            failed_check: check.to_owned(),
+        }
+        .into());
     }
 
     Ok(())
@@ -762,8 +772,6 @@ fn preflight(matches: &clap::ArgMatches, hook: &str) -> Result<()> {
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
         for config in &cfg.preflight {
-            println!("{:?}", config.run_when);
-            println!("{hook}");
             if config.run_when.contains(&hook.to_owned()) {
                 preflight_checks(config, 0)?;
             }
@@ -776,7 +784,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args();
     let hook_arg = args.next().unwrap_or_default();
     let hook = hook_arg.split('-').last().unwrap_or_default();
-    println!("{hook:?}");
 
     let matches = parse_args(args);
 
