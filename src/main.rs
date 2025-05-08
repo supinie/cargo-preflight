@@ -529,6 +529,12 @@ fn init_symlink() -> Result<()> {
     Ok(())
 }
 
+fn delete_symlink() -> Result<()> {
+    std::fs::remove_file("./.git/hooks/pre-commit")?;
+    std::fs::remove_file("./.git/hooks/pre-push")?;
+    Ok(())
+}
+
 fn get_current_branch_name() -> Option<String> {
     let repo = Repository::open(".").ok()?;
     let head = repo.head().ok()?;
@@ -553,7 +559,8 @@ fn get_branches() -> Result<Vec<String>, git2::Error> {
 fn parse_args<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
     let cmd = clap::Command::new("cargo-preflight")
         .styles(CLAP_STYLING)
-        .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks depending on local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
+        .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks to run checks according to local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
+        .arg(clap::arg!(--"ground" "Un-initialise preflight in the current repository. This will remove all git hooks").value_parser(clap::value_parser!(bool)))
         .arg(clap::Arg::new("REMOTE").hide(true))
         .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool)));
     cmd.get_matches_from(args)
@@ -806,10 +813,14 @@ fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
 fn preflight(matches: &clap::ArgMatches, hook: &str) -> Result<()> {
     let cfg = check_local_config()?;
     let init = matches.get_one::<bool>("init");
+    let ground = matches.get_one::<bool>("ground");
     let configure = matches.get_one::<bool>("config");
     if init == Some(&true) {
         println!("Initialising...");
         init_symlink()?;
+    } else if ground == Some(&true) {
+        println!("Closing hanger doors...");
+        delete_symlink()?;
     } else if configure == Some(&true) {
         update_config()?;
     } else {
