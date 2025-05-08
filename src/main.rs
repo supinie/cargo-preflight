@@ -131,6 +131,10 @@ use std::{
     io::Read,
     process::{Command, ExitCode},
 };
+use tabled::{
+    Table, Tabled,
+    settings::{Reverse, Rotate, Style},
+};
 use thiserror::Error;
 
 const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
@@ -142,12 +146,16 @@ const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Sty
     .valid(clap_cargo::style::VALID)
     .invalid(clap_cargo::style::INVALID);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Tabled)]
 struct PreflightConfig {
+    #[tabled(display = "display_vecs")]
     run_when: Vec<String>,
+    #[tabled(display = "display_vecs")]
     branches: Vec<String>,
+    #[tabled(display = "display_checks")]
     checks: Vec<String>,
     autofix: bool,
+    #[tabled(rename = "override")]
     over_ride: bool,
 }
 
@@ -161,6 +169,20 @@ impl Default for PreflightConfig {
             over_ride: false,
         }
     }
+}
+
+fn display_vecs(vec: &[String]) -> String {
+    vec.iter()
+        .map(|item| format!("- {item}"))
+        .collect::<Vec<String>>()
+        .join("\n")
+}
+
+fn display_checks(vec: &[String]) -> String {
+    vec.iter()
+        .map(|item| format!("[ ] {item}"))
+        .collect::<Vec<String>>()
+        .join("\n")
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -378,6 +400,26 @@ fn check_local_config() -> Result<PreflightConfigWrapper, confy::ConfyError> {
     }
 }
 
+fn print_checklist() -> Result<()> {
+    let cfg = check_local_config()?;
+    let mut table = Table::new(cfg.preflight);
+    table
+        .with(Rotate::Right)
+        .with(Reverse::columns(0))
+        .with(Style::extended());
+    let cfg_type = if exists("./.preflight.toml").expect("Can't check for local config") {
+        "(Local)"
+    } else {
+        "(Global)"
+    };
+    println!(
+        "{} {cfg_type}:",
+        " 🛫 Current Active Preflight Checklist".bold()
+    );
+    println!("{table}");
+    Ok(())
+}
+
 fn run_checks(checks: &[String]) -> Result<()> {
     for check in checks {
         match check.as_str() {
@@ -556,13 +598,15 @@ fn get_branches() -> Result<Vec<String>, git2::Error> {
     Ok(branches)
 }
 
+#[allow(clippy::cognitive_complexity)]
 fn parse_args<I: Iterator<Item = String>>(args: I) -> clap::ArgMatches {
     let cmd = clap::Command::new("cargo-preflight")
         .styles(CLAP_STYLING)
         .arg(clap::arg!(--"init" "Initialise preflight in the current repository. This will add git hooks to run checks according to local/global config (priority in that order)").value_parser(clap::value_parser!(bool)))
         .arg(clap::arg!(--"ground" "Un-initialise preflight in the current repository. This will remove all git hooks").value_parser(clap::value_parser!(bool)))
         .arg(clap::Arg::new("REMOTE").hide(true))
-        .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool)));
+        .arg(clap::arg!(--"config" "Configure preflight checks to run").value_parser(clap::value_parser!(bool)))
+        .arg(clap::arg!(--"checklist" "Output the current configuration that will be applied in this repository").value_parser(clap::value_parser!(bool)));
     cmd.get_matches_from(args)
 }
 
@@ -815,6 +859,7 @@ fn preflight(matches: &clap::ArgMatches, hook: &str) -> Result<()> {
     let init = matches.get_one::<bool>("init");
     let ground = matches.get_one::<bool>("ground");
     let configure = matches.get_one::<bool>("config");
+    let checklist = matches.get_one::<bool>("checklist");
     if init == Some(&true) {
         println!("Initialising...");
         init_symlink()?;
@@ -823,6 +868,8 @@ fn preflight(matches: &clap::ArgMatches, hook: &str) -> Result<()> {
         delete_symlink()?;
     } else if configure == Some(&true) {
         update_config()?;
+    } else if checklist == Some(&true) {
+        print_checklist()?;
     } else {
         println!("{}", "🛫 Running Preflight Checks...".bold());
         for config in &cfg.preflight {
