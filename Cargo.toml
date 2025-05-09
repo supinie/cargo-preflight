@@ -1,6 +1,6 @@
 [package]
 name = "cargo-preflight"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 authors = ["supinie <preflight@supinie.com>"]
 description = "A custom Cargo subcommand to run local 'CI' on certain Git actions."
