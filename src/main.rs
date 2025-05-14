@@ -138,5 +138,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = parse_args(args);
 
     preflight(&matches, hook)?;
+
+    println!("TESTING SECRETS");
+    checks::check_secrets()?;
     Ok(())
 }

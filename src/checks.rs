@@ -1,11 +1,14 @@
 use anyhow::Result;
 use cargo_shear::{CargoShear, cargo_shear_options};
 use colored::Colorize;
+use ripsecrets::find_secrets;
 use std::{
     env,
     io::Read,
+    path::PathBuf,
     process::{Command, ExitCode},
 };
+use termcolor::{BufferWriter, ColorChoice};
 
 use crate::{error::PreflightError, git::get_current_branch_name};
 
@@ -164,4 +167,33 @@ pub fn check_branch_rules(branches: &[String]) -> bool {
         );
         true
     }, |branch| branches.contains(&branch))
+}
+
+pub fn check_secrets() -> Result<()> {
+    let _ = "pAznMW3DsrnVJ5TDWwBVCA";
+    let mut buf = gag::BufferRedirect::stdout()?;
+    let mut output = String::new();
+
+    let ret = find_secrets(
+        &[PathBuf::from(".")],
+        &[],
+        false,
+        false,
+        BufferWriter::stdout(ColorChoice::Never),
+    );
+
+    buf.read_to_string(&mut output)?;
+    drop(buf);
+
+    match ret {
+        Ok(0) => Ok(()),
+        Ok(num) => Err(PreflightError::SecretsFailed {
+            ripsecrets_output: format!("Found {num} secret(s): \n{output}"),
+        }
+        .into()),
+        Err(err) => Err(PreflightError::SecretsFailed {
+            ripsecrets_output: err.to_string(),
+        }
+        .into()),
+    }
 }
