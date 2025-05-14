@@ -186,7 +186,10 @@ pub fn secrets() -> Result<()> {
     drop(buf);
 
     match ret {
-        Ok(0) => Ok(()),
+        Ok(0) => {
+            println!("    {}", "[√] Secrets preflight check passed".green());
+            Ok(())
+        }
         Ok(num) => Err(PreflightError::SecretsFailed {
             ripsecrets_output: format!("Found {num} secret(s): \n{output}"),
         }
