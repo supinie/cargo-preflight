@@ -66,9 +66,10 @@
 //!     "clippy", # `cargo clippy -- -D warnings`
 //!     "test", # `cargo test`
 //!     "check_tests", # `cargo check --tests`
+//!     "unused_deps", # uses `cargo-shear`
+//!     "secrets", # uses `ripsecrets`
 //!     "check_examples",  # `cargo check --examples`
 //!     "check_benches", # `cargo check --benches`
-//!     "unused_deps", # uses `cargo-shear`
 //! ] # Default values: ["fmt", "test"]
 //!
 //! autofix = false # Enables autofix functionality (for fmt and clippy)
@@ -100,6 +101,7 @@
 //!     "clippy",
 //!     "test",
 //!     "unused_deps",
+//!     "secrets",
 //! ]
 //! autofix = false
 //! over_ride = false
@@ -138,5 +140,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = parse_args(args);
 
     preflight(&matches, hook)?;
+
     Ok(())
 }

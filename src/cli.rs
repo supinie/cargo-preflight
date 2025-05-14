@@ -82,6 +82,7 @@ pub fn update_config() -> Result<()> {
             "clippy",
             "test",
             "unused_deps",
+            "secrets",
             "check_tests",
             "check_examples",
             "check_benches",

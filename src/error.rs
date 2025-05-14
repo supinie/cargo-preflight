@@ -39,6 +39,10 @@ pub enum PreflightError {
     #[error("    {}{shear_output}", "[x] Unused dependencies preflight check failed:\n".red().bold())]
     ShearFailed { shear_output: String },
 
+    /// `ripsecrets` preflight check failed
+    #[error("    {}{ripsecrets_output}", "[x] Secrets search preflight check failed:\n".red().bold())]
+    SecretsFailed { ripsecrets_output: String },
+
     #[error("    {}{failed_check}", "Preflight ended due to failed check: ".red().bold())]
     OverrideCancelled { failed_check: String },
 }
@@ -59,6 +63,7 @@ pub fn failed_check_index(checks: &[String], error: &PreflightError) -> Option<u
         PreflightError::CheckBenchesFailed { .. } => "check_benches",
         PreflightError::TestsFailed { .. } => "test",
         PreflightError::ShearFailed { .. } => "unused_deps",
+        PreflightError::SecretsFailed { .. } => "secrets",
         PreflightError::InvalidCheck { config } => config.as_str(),
         PreflightError::InvalidHook { .. } => "hook",
         PreflightError::OverrideCancelled { .. } => unreachable!(),

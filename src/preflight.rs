@@ -10,6 +10,8 @@ use crate::{
     git::{delete_symlink, init_symlink},
 };
 
+const SUPPORTED_AUTOFIX: [&str; 2] = ["fmt", "clippy"];
+
 pub fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
     if !check_branch_rules(&cfg.branches) {
         println!("Branch not included in preflight checks, exiting...");
@@ -25,7 +27,9 @@ pub fn preflight_checks(cfg: &PreflightConfig, start: usize) -> Result<()> {
     };
 
     if let (true, Some(index)) = (cfg.autofix, stopped_at) {
-        autofix_prompt(cfg, index)?;
+        if SUPPORTED_AUTOFIX.contains(&cfg.checks[index].as_str()) {
+            autofix_prompt(cfg, index)?;
+        }
     } else if let (true, Some(index)) = (cfg.over_ride, stopped_at) {
         over_ride(cfg, index)?;
     }

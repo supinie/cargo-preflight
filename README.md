@@ -51,10 +51,11 @@ checks = [
     "fmt", # `cargo fmt -- --check`
     "clippy", # `cargo clippy -- -D warnings`
     "test", # `cargo test`
+    "unused_deps", # uses `cargo-shear`
+    "secrets", # uses `ripsecrets`
     "check_tests", # `cargo check --tests`
     "check_examples",  # `cargo check --examples`
     "check_benches", # `cargo check --benches`
-    "unused_deps", # uses `cargo-shear`
 ] # Default values: ["fmt", "test"]
 
 autofix = false # Enables autofix functionality (for fmt and clippy)
@@ -86,6 +87,7 @@ checks = [
     "clippy",
     "test",
     "unused_deps",
+    "secrets",
 ]
 autofix = false
 over_ride = false
@@ -111,7 +113,7 @@ _Note: Currently, Preflight only supports Linux systems._
 - [x] Different checks for different hooks
 - [x] Automatically remove unused hooks
 - [x] Properly overwrite old hooks
-- [ ] Check for secrets
+- [x] Check for secrets
 - [ ] Check semver for libs
 - [ ] Check multiple commits for last "stable" commit
 - [ ] Run on `cargo publish`
