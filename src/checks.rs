@@ -171,7 +171,6 @@ pub fn check_branch_rules(branches: &[String]) -> bool {
 }
 
 pub fn secrets() -> Result<()> {
-    let my_secret = "pAznMW3DsrnVJ5TDWwBVCA";
     let mut buf = gag::BufferRedirect::stdout()?;
     let mut output = String::new();
 
