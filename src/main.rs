@@ -139,7 +139,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     preflight(&matches, hook)?;
 
-    println!("TESTING SECRETS");
-    checks::check_secrets()?;
     Ok(())
 }

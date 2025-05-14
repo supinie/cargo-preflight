@@ -22,6 +22,7 @@ pub fn run_checks(checks: &[String]) -> Result<()> {
             "check_benches" => cargo_check_benches(),
             "test" => cargo_test(),
             "unused_deps" => shear(),
+            "secrets" => secrets(),
             _ => Err(PreflightError::InvalidCheck {
                 config: check.to_owned(),
             }
@@ -169,8 +170,8 @@ pub fn check_branch_rules(branches: &[String]) -> bool {
     }, |branch| branches.contains(&branch))
 }
 
-pub fn check_secrets() -> Result<()> {
-    let _ = "pAznMW3DsrnVJ5TDWwBVCA";
+pub fn secrets() -> Result<()> {
+    let my_secret = "pAznMW3DsrnVJ5TDWwBVCA";
     let mut buf = gag::BufferRedirect::stdout()?;
     let mut output = String::new();
 
