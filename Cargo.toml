@@ -1,6 +1,6 @@
 [package]
 name = "cargo-preflight"
-version = "0.4.2"
+version = "0.5.1"
 edition = "2024"
 authors = ["supinie <preflight@supinie.com>"]
 description = "A custom Cargo subcommand to run local 'CI' on certain Git actions."
@@ -11,7 +11,7 @@ keywords = ["dev-tools", "testing", "CI", "git", "cli"]
 categories = ["command-line-utilities", "development-tools", "development-tools::cargo-plugins", "development-tools::testing"]
 
 [dependencies]
-confy = "0.6.1"
+confy = "1.0.0"
 anyhow = "1.0.98"
 thiserror = "2.0.12"
 clap = { version = "4.5.38", features = ["cargo", "derive"] }
