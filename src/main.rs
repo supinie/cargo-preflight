@@ -32,6 +32,32 @@
 //!
 //! `cargo install cargo-preflight`
 //!
+//! ## nixpkgs:
+//!
+//! _testing in a temporary shell:_
+//!
+//! ```bash
+//! nix-shell -p cargo-preflight
+//! ```
+//!
+//! or through Nix config:
+//!
+//! ```nix
+//!   environment.systemPackages = [
+//!     pkgs.cargo-preflight
+//!   ];
+//! ```
+//!
+//! or in a dev shell:
+//!
+//! ```nix
+//! # shell.nix example
+//! { pkgs ? import <nixpkgs> {} }:
+//! pkgs.mkShell {
+//!   buildInputs = [ pkgs.cargo-preflight ];
+//! }
+//! ```
+//!
 //! # Configuring Preflight
 //!
 //! Preflight can be configured by running:
