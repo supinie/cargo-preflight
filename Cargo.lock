@@ -1265,9 +1265,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "ripsecrets"
-version = "0.1.9"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6d49a98d63d41f211b37b4766bd44b3eca5b5099f07e99f8df766f28782dfb4"
+checksum = "c07838134323adab4f8ec502f87ce3374e264846a8bc07351f221f7c30d02579"
 dependencies = [
  "clap",
  "clap_complete",
