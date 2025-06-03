@@ -14,7 +14,7 @@ categories = ["command-line-utilities", "development-tools", "development-tools:
 confy = "1.0.0"
 anyhow = "1.0.98"
 thiserror = "2.0.12"
-clap = { version = "4.5.38", features = ["cargo", "derive"] }
+clap = { version = "4.5.39", features = ["cargo", "derive"] }
 clap-cargo = "0.15.2"
 dirs = "6.0.0"
 colored = "3.0.0"
