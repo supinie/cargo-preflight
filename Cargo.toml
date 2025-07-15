@@ -15,7 +15,7 @@ confy = "1.0.0"
 anyhow = "1.0.98"
 thiserror = "2.0.12"
 clap = { version = "4.5.41", features = ["cargo", "derive"] }
-clap-cargo = "0.15.2"
+clap-cargo = "0.16.0"
 dirs = "6.0.0"
 colored = "3.0.0"
 inquire = "0.7.5"
