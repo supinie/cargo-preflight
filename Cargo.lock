@@ -176,9 +176,9 @@ dependencies = [
 
 [[package]]
 name = "cargo-shear"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5147ceabb840503ff6eac50165cda28410407bb64770c43b93d1cd7ee2229171"
+checksum = "e51bd0b042e9ff98779eecf2ee809bfec3fcf86e975736ddf751dc0a956fd85b"
 dependencies = [
  "anyhow",
  "bpaf",
